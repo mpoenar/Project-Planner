@@ -760,27 +760,42 @@ async function connectAndSync() {
   statEl.textContent = 'Se preiau datele...'; statEl.style.display = 'block';
 
   try {
-    // Try the correct TrackingTime API endpoint
-    const resp = await fetch(`https://app.trackingtime.co/api/v4/projects`, {
-      headers: { 
-        'Authorization': 'Basic ' + auth, 
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
+    // TrackingTime API: projects are called "tasks" at top level
+    // Try multiple endpoints to find the correct one
+    let projectsData = [];
+    
+    const endpoints = [
+      `https://app.trackingtime.co/api/v4/tasks`,
+      `https://app.trackingtime.co/api/v4/projects`,
+      `https://app.trackingtime.co/api/v4/accounts/${account}/tasks`,
+    ];
+
+    let lastError = '';
+    for (const url of endpoints) {
+      const resp = await fetch(url, {
+        headers: { 
+          'Authorization': 'Basic ' + auth, 
+          'Accept': 'application/json'
+        }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        projectsData = data.data || data.response?.data || (Array.isArray(data) ? data : []);
+        if (projectsData.length > 0) break;
+      } else {
+        lastError = `${url} → ${resp.status}`;
       }
-    });
+    }
 
-    if (resp.status === 401) throw new Error('Autentificare eșuată — verifică email și app password');
-    if (!resp.ok) throw new Error('Eroare API (' + resp.status + ')');
-
-    const data = await resp.json();
-    const projectsData = data.data || data.response?.data || (Array.isArray(data) ? data : []);
+    if (projectsData.length === 0 && lastError) {
+      throw new Error('Endpoint negăsit. Ultimul răspuns: ' + lastError);
+    }
 
     ttHours = {};
     let count = 0;
     for (const p of projectsData) {
-      const name = (p.name || p.title || '').toLowerCase().trim();
-      // TrackingTime stores duration in seconds or minutes - normalize to hours
-      const rawTime = p.logged_time || p.logged_hours || p.duration || p.total_time || p.hours || 0;
+      const name = (p.name || p.title || p.project_name || '').toLowerCase().trim();
+      const rawTime = p.logged_time || p.logged_hours || p.duration || p.total_time || p.hours || p.time || 0;
       const hours = typeof rawTime === 'number' ? (rawTime > 1000 ? rawTime / 3600 : rawTime) : 0;
       if (name) { ttHours[name] = Math.round(hours * 10) / 10; count++; }
     }
