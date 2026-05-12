@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Project Planner</title>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -20,28 +21,37 @@ input{font-family:inherit}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
 
+/* Login overlay */
+#login-overlay{position:fixed;inset:0;background:var(--bg0);display:flex;align-items:center;justify-content:center;z-index:2000}
+#login-box{background:var(--bg1);border:1px solid var(--bd);border-radius:var(--rlg);padding:40px;width:400px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.12)}
+#login-box h2{font-size:20px;font-weight:700;margin-bottom:8px}
+#login-box p{font-size:13px;color:var(--t2);margin-bottom:28px;line-height:1.5}
+#btn-login{background:var(--blue);color:#fff;border:none;border-radius:var(--r);padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;width:100%}
+#btn-login:hover{opacity:.9}
+#login-error{font-size:12px;color:var(--red);margin-top:12px;display:none}
+
 /* Toolbar */
 #toolbar{background:var(--bg1);border-bottom:1px solid var(--bd);padding:0 16px;height:48px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 #toolbar .title{font-weight:700;font-size:14px;letter-spacing:-.01em}
 #toolbar .sep{width:1px;height:18px;background:var(--bd);margin:0 4px}
-#btn-overlaps{height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;transition:all .15s}
-#btn-overlaps.active{background:#fde8ec;color:var(--red);border-color:#f5c6cb}
+#save-status{font-size:11px;color:var(--t3);display:flex;align-items:center;gap:4px}
 #search{height:28px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t1);padding:0 10px;font-size:12px;width:160px;outline:none}
 .spacer{flex:1}
 .zoom-lbl{font-size:11px;color:var(--t2)}
 .zbtn{width:28px;height:28px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t1);font-size:15px;line-height:1}
 #zoom-val{font-size:11px;color:var(--t2);min-width:36px;text-align:center}
 #btn-add-project{height:30px;padding:0 14px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700}
+#btn-overlaps{height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;transition:all .15s}
+#btn-overlaps.active{background:#fde8ec;color:var(--red);border-color:#f5c6cb}
+#user-btn{height:28px;padding:0 10px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px}
 
 /* Legend */
 #legend{background:var(--bg2);border-bottom:1px solid var(--bd);padding:4px 16px;display:flex;gap:18px;align-items:center;flex-shrink:0;overflow-x:auto;white-space:nowrap}
 #legend .hint{margin-left:auto;font-size:10px;color:var(--t3)}
 
-/* Main gantt area */
+/* Gantt */
 #gantt{flex:1;overflow:auto;position:relative}
 #gantt-inner{display:inline-flex;flex-direction:column;min-width:100%}
-
-/* Header row */
 #gantt-header{display:flex;position:sticky;top:0;z-index:20;height:54px;background:var(--bg1);border-bottom:1px solid var(--bd);flex-shrink:0;box-shadow:0 1px 0 var(--bd)}
 .left-header{width:290px;flex-shrink:0;position:sticky;left:0;z-index:30;background:var(--bg1);border-right:1px solid var(--bd);display:flex;align-items:center;padding:0 16px}
 .left-header span{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.1em}
@@ -50,10 +60,6 @@ input{font-family:inherit}
 .week-row{display:flex;height:45%;position:relative}
 .month-cell{flex-shrink:0;font-size:10px;font-weight:700;color:var(--t2);display:flex;align-items:center;padding-left:8px;border-right:1px solid var(--bd);letter-spacing:.06em}
 .week-cell{flex-shrink:0;font-size:9px;color:var(--t3);display:flex;align-items:center;padding-left:4px;border-right:1px solid var(--bd)}
-#today-head{position:absolute;top:0;bottom:0;width:2px;background:var(--red);z-index:5}
-#today-lbl{position:absolute;top:0;left:4px;font-size:9px;color:var(--red);white-space:nowrap}
-
-/* Data rows */
 .gantt-row{display:flex;flex-shrink:0;border-bottom:1px solid var(--bd)}
 .gantt-row.even{background:var(--bg1)}
 .gantt-row.odd{background:var(--bg2)}
@@ -70,18 +76,18 @@ input{font-family:inherit}
 .timeline-cell{flex-shrink:0;position:relative;overflow:hidden;height:42px}
 .grid-line{position:absolute;top:0;bottom:0;width:1px;background:var(--bd);pointer-events:none}
 .today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--red);opacity:.6;pointer-events:none;z-index:4}
+.today-head-line{position:absolute;top:0;bottom:0;width:2px;background:var(--red);z-index:5}
+.today-lbl{position:absolute;top:0;left:4px;font-size:9px;color:var(--red);white-space:nowrap}
 .bar{position:absolute;display:flex;align-items:center;overflow:hidden;cursor:pointer;transition:opacity .15s}
 .bar:hover{opacity:.95!important}
 .bar-progress{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.25);border-right:1px solid rgba(255,255,255,.35)}
 .bar-label{position:relative;z-index:1;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.95);padding-left:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* Footer */
 #gantt-footer{display:flex;height:44px;flex-shrink:0}
 .footer-left{width:290px;flex-shrink:0;position:sticky;left:0;z-index:10;background:var(--bg1);border-right:1px solid var(--bd);display:flex;align-items:center;justify-content:center;border-top:1px solid var(--bd)}
 .footer-left button{background:none;border:none;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer}
 .footer-right{flex-shrink:0;border-top:1px solid var(--bd);background:var(--bg1)}
 
-/* Modal overlay */
+/* Modal */
 #modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center}
 #modal-overlay.open{display:flex}
 #modal{background:var(--bg1);border:1px solid var(--bd);border-radius:var(--rlg);padding:28px;width:480px;max-width:95vw;box-shadow:0 10px 40px rgba(0,0,0,.2)}
@@ -108,27 +114,55 @@ input{font-family:inherit}
 .btn-cancel{padding:8px 16px;border-radius:var(--r);border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px}
 .btn-save{padding:8px 18px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700}
 input[type=range]{width:100%;accent-color:var(--blue)}
+
+/* Loading screen */
+#loading-screen{position:fixed;inset:0;background:var(--bg0);display:none;align-items:center;justify-content:center;z-index:1500;flex-direction:column;gap:12px}
+#loading-screen.visible{display:flex}
+.spinner{width:32px;height:32px;border:3px solid var(--bd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 
-<!-- Toolbar -->
+<!-- ── Login overlay ── -->
+<div id="login-overlay">
+  <div id="login-box">
+    <div style="font-size:32px;margin-bottom:16px">📋</div>
+    <h2>Project Planner</h2>
+    <p>Conectează-te cu contul tău Microsoft pentru a accesa și sincroniza datele echipei.</p>
+    <button id="btn-login" onclick="login()">Conectează-te cu Microsoft</button>
+    <div id="login-error">Autentificarea a eșuat. Încearcă din nou.</div>
+  </div>
+</div>
+
+<!-- ── Loading screen ── -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <span style="font-size:13px;color:var(--t2)">Se încarcă datele...</span>
+</div>
+
+<!-- ── Toolbar ── -->
 <div id="toolbar">
   <span class="title">📋 Project Planner</span>
   <span class="sep"></span>
-  <button id="btn-overlaps" onclick="toggleOverlaps()">⚠ Suprapuneri</button>
+  <div id="save-status">
+    <span id="save-icon">✓</span>
+    <span id="save-text">Salvat</span>
+  </div>
   <input id="search" placeholder="Caută proiect…" oninput="render()">
-  <span class="spacer"></span>
+  <div class="spacer"></div>
+  <button id="btn-overlaps" onclick="toggleOverlaps()">⚠ Suprapuneri</button>
   <span class="zoom-lbl">Zoom</span>
   <button class="zbtn" onclick="zoom(-3)">−</button>
   <span id="zoom-val">22px/zi</span>
   <button class="zbtn" onclick="zoom(3)">+</button>
   <button id="btn-add-project" onclick="addProject()">+ Proiect nou</button>
+  <button id="user-btn" onclick="logout()" title="Deconectare">👤 <span id="user-name"></span></button>
 </div>
 
-<!-- Legend -->
+<!-- ── Legend ── -->
 <div id="legend">
-  <span style="font-size:11px;color:var(--t2)">◑ <span style="color:var(--t2)">In Progress</span></span>
+  <span style="font-size:11px;color:var(--t2)">◑ <span style="color:var(--green)">In Progress</span></span>
   <span style="font-size:11px;color:var(--t2)">⊗ <span style="color:var(--orange)">Delayed</span></span>
   <span style="font-size:11px;color:var(--t2)">⚠ <span style="color:#b45309">At Risk</span></span>
   <span style="font-size:11px;color:var(--t2)">! <span style="color:var(--red)">Problem</span></span>
@@ -137,16 +171,14 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <span class="hint">Dublu-click pe bară pentru editare</span>
 </div>
 
-<!-- Gantt -->
+<!-- ── Gantt ── -->
 <div id="gantt">
   <div id="gantt-inner">
     <div id="gantt-header">
       <div class="left-header"><span>Proiecte &amp; Taskuri</span></div>
       <div id="timeline-header">
         <div class="month-row" id="month-row"></div>
-        <div class="week-row" id="week-row">
-          <div id="today-head"><span id="today-lbl">azi</span></div>
-        </div>
+        <div class="week-row" id="week-row"></div>
       </div>
     </div>
     <div id="rows-container"></div>
@@ -157,7 +189,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   </div>
 </div>
 
-<!-- Modal -->
+<!-- ── Modal ── -->
 <div id="modal-overlay" onclick="closeModal(event)">
   <div id="modal">
     <div class="modal-header">
@@ -204,10 +236,195 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 </div>
 
 <script>
-/* ── Config ── */
+/* ════════════════════════════════════════════
+   CONFIGURARE — completează după înregistrare
+   ════════════════════════════════════════════ */
+const CONFIG = {
+  clientId:  '09e90cfd-f525-4a76-a8de-59a3348cb3c5',
+  tenantId:  '7e340232-f9b1-489e-b927-e8f5b8b3e38',
+  siteHost:  'meconceptsrl.sharepoint.com',
+  sitePath:  '/sites/Coordonareproiecte',
+  listName:  'ProjectPlannerData',
+};
+/* ════════════════════════════════════════════ */
+
+/* ── MSAL ── */
+let msalInstance, currentAccount, cachedSiteId, cachedListId, listItemId;
+
+async function initMsal() {
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId: CONFIG.clientId,
+      authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+      redirectUri: window.location.origin + window.location.pathname,
+    },
+    cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
+  });
+  await msalInstance.initialize();
+
+  // Check existing session
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    currentAccount = accounts[0];
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('user-name').textContent = currentAccount.name?.split(' ')[0] || '';
+    showLoading(true);
+    await loadData();
+    showLoading(false);
+  }
+}
+
+async function login() {
+  try {
+    document.getElementById('login-error').style.display = 'none';
+    const result = await msalInstance.loginPopup({
+      scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All'],
+    });
+    currentAccount = result.account;
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('user-name').textContent = currentAccount.name?.split(' ')[0] || '';
+    showLoading(true);
+    await loadData();
+    showLoading(false);
+  } catch (e) {
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function logout() {
+  if (confirm('Deconectare?')) msalInstance.logoutPopup();
+}
+
+async function getToken() {
+  if (!currentAccount) return null;
+  try {
+    const r = await msalInstance.acquireTokenSilent({
+      scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All'],
+      account: currentAccount,
+    });
+    return r.accessToken;
+  } catch {
+    try {
+      const r = await msalInstance.acquireTokenPopup({
+        scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All'],
+      });
+      return r.accessToken;
+    } catch { return null; }
+  }
+}
+
+/* ── Graph API ── */
+async function graph(method, path, body) {
+  const token = await getToken();
+  if (!token) return null;
+  const res = await fetch('https://graph.microsoft.com/v1.0' + path, {
+    method,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 204) return {};
+  return res.ok ? res.json() : null;
+}
+
+async function getSiteId() {
+  if (cachedSiteId) return cachedSiteId;
+  const data = await graph('GET', `/sites/${CONFIG.siteHost}:${CONFIG.sitePath}`);
+  cachedSiteId = data?.id;
+  return cachedSiteId;
+}
+
+async function getOrCreateList(siteId) {
+  if (cachedListId) return cachedListId;
+
+  // Search for existing list
+  const lists = await graph('GET', `/sites/${siteId}/lists?$filter=displayName eq '${CONFIG.listName}'&$select=id`);
+  if (lists?.value?.length > 0) {
+    cachedListId = lists.value[0].id;
+    return cachedListId;
+  }
+
+  // Create list
+  const newList = await graph('POST', `/sites/${siteId}/lists`, {
+    displayName: CONFIG.listName,
+    columns: [{ name: 'JsonData', text: { allowMultipleLines: true, linesForEditing: 20 } }],
+    list: { template: 'genericList' },
+  });
+  cachedListId = newList?.id;
+  return cachedListId;
+}
+
+/* ── Data load / save ── */
+async function loadData() {
+  try {
+    const siteId = await getSiteId();
+    if (!siteId) { setStatus('error', 'Eroare site'); return; }
+
+    const listId = await getOrCreateList(siteId);
+    if (!listId) { setStatus('error', 'Eroare listă'); return; }
+
+    const items = await graph('GET', `/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=5&$select=id,fields`);
+    if (items?.value?.length > 0) {
+      const item = items.value[0];
+      listItemId = item.id;
+      try {
+        const parsed = JSON.parse(item.fields.JsonData || '[]');
+        if (Array.isArray(parsed) && parsed.length > 0) projects = parsed;
+      } catch { /* use defaults */ }
+    }
+    setStatus('ok', 'Salvat');
+    render();
+  } catch (e) {
+    setStatus('error', 'Eroare conexiune');
+    render();
+  }
+}
+
+let saveTimer = null;
+function queueSave() {
+  setStatus('pending', 'Se salvează...');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(doSave, 1200);
+}
+
+async function doSave() {
+  try {
+    const siteId = await getSiteId();
+    const listId = await getOrCreateList(siteId);
+    const json = JSON.stringify(projects);
+
+    if (listItemId) {
+      await graph('PATCH', `/sites/${siteId}/lists/${listId}/items/${listItemId}/fields`, { JsonData: json });
+    } else {
+      const item = await graph('POST', `/sites/${siteId}/lists/${listId}/items`, {
+        fields: { Title: 'state', JsonData: json },
+      });
+      listItemId = item?.id;
+    }
+    setStatus('ok', 'Salvat');
+  } catch {
+    setStatus('error', 'Eroare salvare');
+  }
+}
+
+function setStatus(type, text) {
+  const icon = document.getElementById('save-icon');
+  const lbl = document.getElementById('save-text');
+  const colors = { ok: 'var(--green)', pending: 'var(--t3)', error: 'var(--red)' };
+  const icons = { ok: '✓', pending: '⟳', error: '✕' };
+  icon.textContent = icons[type] || '–';
+  lbl.textContent = text;
+  document.getElementById('save-status').style.color = colors[type] || 'var(--t3)';
+}
+
+function showLoading(v) {
+  document.getElementById('loading-screen').classList.toggle('visible', v);
+}
+
+/* ── Gantt config ── */
 const VIEW_START = '2026-05-01';
 const TOTAL_DAYS = 184;
 let PPD = 22;
+let showOverlaps = false;
 
 const STATUSES = {
   none:          { label:'None',        icon:'–',  color:'var(--t3)' },
@@ -223,21 +440,13 @@ const TCOLORS = ['#5dcaa5','#85b7eb','#97c459','#afa9ec','#ef9f27','#1d9e75','#d
 
 let _id = 1;
 const uid = () => 'r' + (_id++);
-let showOverlaps = false;
-
-function toggleOverlaps() {
-  showOverlaps = !showOverlaps;
-  document.getElementById('btn-overlaps').classList.toggle('active', showOverlaps);
-  render();
-}
-
 function d2ms(s) { return new Date(s + 'T00:00:00').getTime(); }
 function diff(a, b) { return Math.round((d2ms(b) - d2ms(a)) / 86400000); }
 function addD(s, n) { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0]; }
 function todayStr() { return new Date().toISOString().split('T')[0]; }
-function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
-/* ── Data ── */
+/* ── Default projects ── */
 let projects = [
   {id:'p1',name:'Casinostraße 63',color:'#e24b4a',collapsed:false,start:'2026-05-20',end:'2026-05-27',status:'none',progress:0,tasks:[]},
   {id:'p2',name:'Casinostraße 65',color:'#e24b4a',collapsed:false,start:'2026-06-01',end:'2026-09-15',status:'in-progress',progress:20,tasks:[
@@ -273,11 +482,9 @@ function flatRows(search) {
   for (const p of projects) {
     if (q && !p.name.toLowerCase().includes(q) && !p.tasks.some(t => t.name.toLowerCase().includes(q))) continue;
     rows.push({ ...p, isProject: true, depth: 0 });
-    if (!p.collapsed) {
-      for (const t of p.tasks) {
-        if (q && !t.name.toLowerCase().includes(q) && !p.name.toLowerCase().includes(q)) continue;
-        rows.push({ ...t, isProject: false, depth: 1, projectId: p.id });
-      }
+    if (!p.collapsed) for (const t of p.tasks) {
+      if (q && !t.name.toLowerCase().includes(q) && !p.name.toLowerCase().includes(q)) continue;
+      rows.push({ ...t, isProject: false, depth: 1, projectId: p.id });
     }
   }
   return rows;
@@ -293,9 +500,6 @@ function getOverlaps() {
   return s;
 }
 
-function tx(s) { return diff(VIEW_START, s) * PPD; }
-function tw(s, e) { return Math.max(diff(s, e) * PPD, 6); }
-
 /* ── Render ── */
 function render() {
   const search = document.getElementById('search').value;
@@ -304,231 +508,167 @@ function render() {
   const totalW = TOTAL_DAYS * PPD;
   const todayX = diff(VIEW_START, todayStr()) * PPD;
 
-  // Zoom label
   document.getElementById('zoom-val').textContent = PPD + 'px/zi';
-
-  // Timeline header width
   document.getElementById('timeline-header').style.width = totalW + 'px';
 
-  // Month row
   document.getElementById('month-row').innerHTML = MONTHS.map(m =>
     `<div class="month-cell" style="width:${m.days * PPD}px">${m.label}</div>`
   ).join('');
 
-  // Week row
-  const weeks = Math.ceil(TOTAL_DAYS / 7);
   document.getElementById('week-row').innerHTML =
-    Array.from({length: weeks}, (_, i) =>
+    Array.from({length: Math.ceil(TOTAL_DAYS / 7)}, (_, i) =>
       `<div class="week-cell" style="width:${7 * PPD}px">${PPD >= 14 ? 'S' + (i + 19) : ''}</div>`
     ).join('') +
     (todayX >= 0 && todayX <= totalW
-      ? `<div id="today-head" style="left:${todayX}px"><span id="today-lbl">azi</span></div>` : '');
+      ? `<div class="today-head-line" style="left:${todayX}px"><span class="today-lbl">azi</span></div>` : '');
 
-  // Footer right
   document.getElementById('footer-right').style.width = totalW + 'px';
 
-  // Rows
-  const container = document.getElementById('rows-container');
-  container.innerHTML = rows.map((row, i) => {
-    const x = tx(row.start), w = tw(row.start, row.end);
+  document.getElementById('rows-container').innerHTML = rows.map((row, i) => {
+    const x = diff(VIEW_START, row.start) * PPD;
+    const w = Math.max(diff(row.start, row.end) * PPD, 6);
     const isOvlp = row.isProject && overlaps.has(row.id);
     const st = STATUSES[row.status] || STATUSES.none;
     const bg = i % 2 === 0 ? 'even' : 'odd';
+    const cellBg = i % 2 === 0 ? 'var(--bg1)' : 'var(--bg2)';
     const barVisible = x < totalW && x + w > 0;
-    const barOpacity = row.status === 'cancelled' ? 0.35 : 0.82;
-    const barOutline = isOvlp ? '2px solid var(--red)' : 'none';
-    const topPct = 42 * 0.18, hPct = 42 * 0.64;
 
-    const gridLines = MONTHS.map(m =>
-      `<div class="grid-line" style="left:${m.off * PPD}px"></div>`
-    ).join('');
-    const todayLine = todayX >= 0 && todayX <= totalW
-      ? `<div class="today-line" style="left:${todayX}px"></div>` : '';
+    const gridLines = MONTHS.map(m => `<div class="grid-line" style="left:${m.off * PPD}px"></div>`).join('');
+    const todayLine = todayX >= 0 && todayX <= totalW ? `<div class="today-line" style="left:${todayX}px"></div>` : '';
     const bar = barVisible ? `
-      <div class="bar"
-        style="left:${Math.max(0,x)}px;width:${w}px;top:${topPct}px;height:${hPct}px;
-          background:${row.color};border-radius:${row.isProject ? 5 : 4}px;
-          opacity:${barOpacity};outline:${barOutline}"
-        ondblclick="openModal('${row.id}','${row.isProject ? '' : row.projectId}')"
-        title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start, row.end)} zile">
+      <div class="bar" style="left:${Math.max(0,x)}px;width:${w}px;top:${42*.18}px;height:${42*.64}px;
+        background:${row.color};border-radius:${row.isProject?5:4}px;
+        opacity:${row.status==='cancelled'?.35:.82};outline:${isOvlp?'2px solid var(--red)':'none'}"
+        ondblclick="openModal('${row.id}','${row.isProject?'':row.projectId}')"
+        title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start,row.end)} zile">
         ${row.progress > 0 ? `<div class="bar-progress" style="width:${row.progress}%"></div>` : ''}
         ${w > 60 ? `<span class="bar-label">${row.name}</span>` : ''}
       </div>` : '';
 
-    const leftClass = `left-cell${row.depth === 1 ? ' depth1' : ''}`;
-    const dotClass = `color-dot${row.isProject ? ' project' : ''}`;
-    const nameClass = `row-name ${row.isProject ? 'project' : 'task'}`;
     const toggle = row.isProject
-      ? `<button class="toggle-btn" onclick="toggleCollapse('${row.id}')">${row.collapsed ? '▶' : '▼'}</button>`
+      ? `<button class="toggle-btn" onclick="toggleCollapse('${row.id}')">${row.collapsed?'▶':'▼'}</button>`
       : `<span style="width:14px;flex-shrink:0"></span>`;
     const addBtn = row.isProject
       ? `<button class="add-task-btn" onclick="addTask('${row.id}')" title="Adaugă task">+</button>` : '';
 
     return `<div class="gantt-row ${bg}">
-      <div class="${leftClass}" style="background:${i%2===0?'var(--bg1)':'var(--bg2)'}">
+      <div class="left-cell${row.depth===1?' depth1':''}" style="background:${cellBg}">
         ${toggle}
-        <div class="${dotClass}" style="background:${row.color}"></div>
-        <span class="${nameClass}">${isOvlp ? '<span style="color:var(--red);margin-right:4px">⚠</span>' : ''}${row.name}</span>
+        <div class="color-dot${row.isProject?' project':''}" style="background:${row.color}"></div>
+        <span class="row-name ${row.isProject?'project':'task'}">${isOvlp?'<span style="color:var(--red);margin-right:4px">⚠</span>':''}${row.name}</span>
         <span class="status-icon" style="color:${st.color}">${st.icon}</span>
         ${addBtn}
       </div>
-      <div class="timeline-cell" style="width:${totalW}px">
-        ${gridLines}${todayLine}${bar}
-      </div>
+      <div class="timeline-cell" style="width:${totalW}px">${gridLines}${todayLine}${bar}</div>
     </div>`;
   }).join('');
 }
 
-/* ── Interactions ── */
-function zoom(delta) {
-  PPD = clamp(PPD + delta, 8, 50);
+/* ── Actions ── */
+function zoom(d) { PPD = clamp(PPD + d, 8, 50); render(); }
+function toggleOverlaps() {
+  showOverlaps = !showOverlaps;
+  document.getElementById('btn-overlaps').classList.toggle('active', showOverlaps);
   render();
 }
-
-function toggleCollapse(projId) {
-  const p = projects.find(x => x.id === projId);
+function toggleCollapse(id) {
+  const p = projects.find(x => x.id === id);
   if (p) { p.collapsed = !p.collapsed; render(); }
 }
-
 function addProject() {
   const t = todayStr();
-  projects.push({id:uid(),name:'Proiect nou',color:PALETTE[projects.length % PALETTE.length],
+  projects.push({id:uid(),name:'Proiect nou',color:PALETTE[projects.length%PALETTE.length],
     collapsed:false,start:t,end:addD(t,30),status:'none',progress:0,tasks:[]});
-  render();
+  render(); queueSave();
 }
-
 function addTask(projId) {
   const p = projects.find(x => x.id === projId);
   if (!p) return;
   p.collapsed = false;
-  p.tasks.push({id:uid(),name:'Task nou',color:TCOLORS[p.tasks.length % TCOLORS.length],
+  p.tasks.push({id:uid(),name:'Task nou',color:TCOLORS[p.tasks.length%TCOLORS.length],
     start:todayStr(),end:addD(todayStr(),14),status:'none',progress:0});
-  render();
+  render(); queueSave();
 }
 
 /* ── Modal ── */
 let modalRow = null;
-
 function openModal(itemId, projectId) {
   let row = null;
   if (!projectId) {
-    row = projects.find(p => p.id === itemId);
-    if (row) row = { ...row, isProject: true };
+    const p = projects.find(x => x.id === itemId);
+    if (p) row = { ...p, isProject: true };
   } else {
     const p = projects.find(x => x.id === projectId);
-    if (p) {
-      const t = p.tasks.find(x => x.id === itemId);
-      if (t) row = { ...t, isProject: false, projectId };
-    }
+    if (p) { const t = p.tasks.find(x => x.id === itemId); if (t) row = { ...t, isProject: false, projectId }; }
   }
   if (!row) return;
   modalRow = row;
-
   document.getElementById('m-title-lbl').textContent = row.isProject ? 'Editare proiect' : 'Editare task';
   document.getElementById('m-name').value = row.name;
   document.getElementById('m-start').value = row.start;
   document.getElementById('m-end').value = row.end;
   document.getElementById('m-progress').value = row.progress;
-
-  syncModal();
-
-  // Swatches
   document.getElementById('m-colors').innerHTML = PALETTE.map(c =>
-    `<div class="swatch${c === row.color ? ' active' : ''}" style="background:${c}" onclick="pickColor('${c}')"></div>`
+    `<div class="swatch${c===row.color?' active':''}" style="background:${c}" onclick="pickColor('${c}')"></div>`
   ).join('');
-
-  // Status buttons
-  document.getElementById('m-statuses').innerHTML = Object.entries(STATUSES).map(([k, v]) =>
-    `<button class="status-btn${row.status === k ? ' active' : ''}" style="color:${row.status===k?v.color:'var(--t2)'};border-color:${row.status===k?v.color:'var(--bd)'}"
+  document.getElementById('m-statuses').innerHTML = Object.entries(STATUSES).map(([k,v]) =>
+    `<button class="status-btn${row.status===k?' active':''}" style="color:${row.status===k?v.color:'var(--t2)'};border-color:${row.status===k?v.color:'var(--bd)'}"
       onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
-
+  syncModal();
   document.getElementById('modal-overlay').classList.add('open');
 }
-
 function syncModal() {
-  const name = document.getElementById('m-name').value;
   const start = document.getElementById('m-start').value;
   const end = document.getElementById('m-end').value;
   const progress = +document.getElementById('m-progress').value;
-  const days = start && end ? Math.max(0, diff(start, end)) : 0;
-
-  document.getElementById('m-days').textContent = days + ' zile';
+  document.getElementById('m-days').textContent = (start&&end?Math.max(0,diff(start,end)):0) + ' zile';
   document.getElementById('m-prog-lbl').textContent = `Progres — ${progress}%`;
   document.getElementById('m-prog-fill').style.width = progress + '%';
-
-  // Update color dot with current selected color
-  const activeSwatch = document.querySelector('.swatch.active');
-  if (activeSwatch) document.getElementById('m-color-dot').style.background = activeSwatch.style.background;
+  const as = document.querySelector('.swatch.active');
+  if (as) document.getElementById('m-color-dot').style.background = as.style.background;
 }
-
 function pickColor(color) {
-  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.style.background === color || s.style.backgroundColor === color));
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.style.background===color||s.style.backgroundColor===color));
   document.getElementById('m-color-dot').style.background = color;
   if (modalRow) modalRow.color = color;
 }
-
 function pickStatus(key) {
-  if (!modalRow) return;
-  modalRow.status = key;
-  document.querySelectorAll('.status-btn').forEach(b => {
-    const k = b.textContent.trim().includes(STATUSES[key].label) && b.textContent.trim().includes(STATUSES[key].icon);
-    b.className = 'status-btn';
-  });
-  // Re-render status buttons
-  const v = STATUSES[key];
-  document.getElementById('m-statuses').innerHTML = Object.entries(STATUSES).map(([k, sv]) =>
-    `<button class="status-btn${k===key?' active':''}" style="color:${k===key?sv.color:'var(--t2)'};border-color:${k===key?sv.color:'var(--bd)'}"
-      onclick="pickStatus('${k}')">${sv.icon} ${sv.label}</button>`
+  if (modalRow) modalRow.status = key;
+  document.getElementById('m-statuses').innerHTML = Object.entries(STATUSES).map(([k,v]) =>
+    `<button class="status-btn${k===key?' active':''}" style="color:${k===key?v.color:'var(--t2)'};border-color:${k===key?v.color:'var(--bd)'}"
+      onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
 }
-
 function saveItem() {
   if (!modalRow) return;
   const name = document.getElementById('m-name').value.trim() || 'Fără nume';
   const start = document.getElementById('m-start').value;
   const end = document.getElementById('m-end').value;
   const progress = +document.getElementById('m-progress').value;
-  const activeSwatch = document.querySelector('.swatch.active');
-  const color = activeSwatch ? (activeSwatch.style.backgroundColor || activeSwatch.style.background) : modalRow.color;
-
+  const as = document.querySelector('.swatch.active');
+  const color = as ? (as.style.backgroundColor || as.style.background) : modalRow.color;
   if (modalRow.isProject) {
     const p = projects.find(x => x.id === modalRow.id);
     if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color });
   } else {
     const p = projects.find(x => x.id === modalRow.projectId);
-    if (p) {
-      const t = p.tasks.find(x => x.id === modalRow.id);
-      if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color });
-    }
+    if (p) { const t = p.tasks.find(x => x.id === modalRow.id); if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color }); }
   }
-  hideModal();
-  render();
+  hideModal(); render(); queueSave();
 }
-
 function deleteItem() {
   if (!modalRow) return;
-  if (modalRow.isProject) {
-    projects = projects.filter(p => p.id !== modalRow.id);
-  } else {
-    const p = projects.find(x => x.id === modalRow.projectId);
-    if (p) p.tasks = p.tasks.filter(t => t.id !== modalRow.id);
-  }
-  hideModal();
-  render();
+  if (modalRow.isProject) projects = projects.filter(p => p.id !== modalRow.id);
+  else { const p = projects.find(x => x.id === modalRow.projectId); if (p) p.tasks = p.tasks.filter(t => t.id !== modalRow.id); }
+  hideModal(); render(); queueSave();
 }
-
-function hideModal() {
-  document.getElementById('modal-overlay').classList.remove('open');
-  modalRow = null;
-}
-
-function closeModal(e) {
-  if (e.target === document.getElementById('modal-overlay')) hideModal();
-}
+function hideModal() { document.getElementById('modal-overlay').classList.remove('open'); modalRow = null; }
+function closeModal(e) { if (e.target === document.getElementById('modal-overlay')) hideModal(); }
 
 /* ── Init ── */
 render();
+initMsal().catch(console.error);
 </script>
 </body>
 </html>
