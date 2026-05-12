@@ -587,7 +587,10 @@ function toggleCollapse(id) {
 }
 function addProject() {
   const t = todayStr();
-  projects.push({id:uid(),name:'Proiect nou',color:PALETTE[projects.length%PALETTE.length],
+  let name = 'Proiect nou';
+  const existing = projects.filter(p => p.name === name || p.name.startsWith(name + ' ('));
+  if (existing.length > 0) name = name + ' (' + (existing.length + 1) + ')';
+  projects.push({id:uid(),name,color:PALETTE[projects.length%PALETTE.length],
     collapsed:false,start:t,end:addD(t,30),status:'none',progress:0,tasks:[]});
   render(); queueSave();
 }
@@ -660,6 +663,15 @@ function saveItem() {
   const progress = +document.getElementById('m-progress').value;
   const as = document.querySelector('.swatch.active');
   const color = as ? (as.style.backgroundColor || as.style.background) : modalRow.color;
+
+  // Check duplicate name
+  if (modalRow.isProject) {
+    const duplicate = projects.find(p => p.name === name && p.id !== modalRow.id);
+    if (duplicate) {
+      if (!confirm(`Există deja un proiect cu numele "${name}". Continui oricum?`)) return;
+    }
+  }
+
   if (modalRow.isProject) {
     const p = projects.find(x => x.id === modalRow.id);
     if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color });
