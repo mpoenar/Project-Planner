@@ -554,7 +554,9 @@ function render() {
       </div>` : '';
 
     const toggle = row.isProject
-      ? `<button class="toggle-btn" onclick="toggleCollapse('${row.id}')">${row.collapsed?'▶':'▼'}</button>`
+      ? (row.tasks && row.tasks.length > 0
+          ? `<button class="toggle-btn" onclick="toggleCollapse('${row.id}')">${row.collapsed?'▶':'▼'}</button>`
+          : `<span style="width:14px;flex-shrink:0"></span>`)
       : `<span style="width:14px;flex-shrink:0"></span>`;
     const addBtn = row.isProject
       ? `<button class="add-task-btn" onclick="addTask('${row.id}')" title="Adaugă task">+</button>` : '';
