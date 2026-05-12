@@ -799,23 +799,56 @@ async function connectAndSync() {
     statEl.textContent = 'Se preiau datele...'; statEl.style.display = 'block';
 
     // Simple direct call - no extra params that might break the API
+    // Fetch time events and aggregate hours per project
+    const yearStart = new Date().getFullYear() + '-01-01';
+    const yearEnd = new Date().getFullYear() + '-12-31';
     let projectsData = [];
-    const tryUrls = [
-      `https://app.trackingtime.co/api/v4/projects`,
-      `https://app.trackingtime.co/api/v4/tasks`,
+
+    // Try events endpoint with date range
+    const evtUrls = [
+      `https://app.trackingtime.co/api/v4/events?from=${yearStart}&to=${yearEnd}`,
+      `https://app.trackingtime.co/api/v4/events`,
+      `https://app.trackingtime.co/api/v4/time_entries?from=${yearStart}&to=${yearEnd}`,
     ];
+
+    let rawEvents = [];
     let usedUrl = '';
-    for (const url of tryUrls) {
+    for (const url of evtUrls) {
       const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
       if (r.ok) {
         const d = await r.json();
         const items = d.data || d.response?.data || (Array.isArray(d) ? d : []);
-        if (items.length > 0) { projectsData = items; usedUrl = url; break; }
+        if (items.length > 0) { rawEvents = items; usedUrl = url; break; }
       }
     }
-    statEl.textContent = usedUrl ? `✓ ${usedUrl.split('/').pop()} → ${projectsData.length} proiecte` : 'Niciun endpoint nu returnează date';
-    statEl.style.display = 'block'; statEl.style.fontSize = '11px'; statEl.style.color = 'var(--t2)';
-    if (projectsData.length === 0) throw new Error('Nu s-au găsit proiecte. Verifică app password-ul.');
+
+    if (rawEvents.length === 0) {
+      // Fallback: try projects/tasks list
+      for (const url of [`https://app.trackingtime.co/api/v4/projects`, `https://app.trackingtime.co/api/v4/tasks`]) {
+        const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
+        if (r.ok) {
+          const d = await r.json();
+          projectsData = d.data || d.response?.data || (Array.isArray(d) ? d : []);
+          if (projectsData.length > 0) { usedUrl = url; break; }
+        }
+      }
+    } else {
+      // Aggregate hours per project from events
+      const hoursMap = {};
+      for (const evt of rawEvents) {
+        const proj = (evt.project_name || evt.task_name || evt.project || evt.name || '').trim();
+        const secs = parseFloat(evt.duration || evt.seconds || evt.time || 0);
+        if (proj) hoursMap[proj] = (hoursMap[proj] || 0) + secs;
+      }
+      projectsData = Object.entries(hoursMap).map(([name, secs]) => ({
+        name,
+        worked_hours: secs > 1000 ? secs / 3600 : secs
+      }));
+    }
+
+    statEl.textContent = `✓ ${usedUrl.split('/').pop()?.split('?')[0]} → ${projectsData.length} proiecte`;
+    statEl.style.display = 'block'; statEl.style.fontSize = '11px'; statEl.style.color = 'var(--green)';
+    if (projectsData.length === 0) throw new Error('API-ul nu returnează date. Verifică permisiunile app password-ului în TrackingTime.');
 
     ttHours = {};
     ttProjectList = [];
