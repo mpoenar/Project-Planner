@@ -794,24 +794,11 @@ async function connectAndSync() {
       throw new Error('Endpoint negăsit. Ultimul răspuns: ' + lastError);
     }
 
-    // Debug: show raw first project in modal
-    if (projectsData.length > 0) {
-      statEl.textContent = 'RAW: ' + JSON.stringify(projectsData[0]).substring(0, 300);
-      statEl.style.display = 'block';
-      statEl.style.color = 'var(--t2)';
-      statEl.style.fontSize = '10px';
-      statEl.style.wordBreak = 'break-all';
-      return; // Stop here so user can read the raw data
-    }
-
     ttHours = {};
     let count = 0;
-    // Debug: log first item to see field names
-    if (projectsData.length > 0) console.log('TT first project raw:', JSON.stringify(projectsData[0]));
     for (const p of projectsData) {
       const name = (p.name || p.title || p.project_name || '').toLowerCase().trim();
-      const rawTime = p.logged_time || p.logged_hours || p.duration || p.total_time || p.hours || p.time || 0;
-      const hours = typeof rawTime === 'number' ? (rawTime > 1000 ? rawTime / 3600 : rawTime) : 0;
+      const hours = parseFloat(p.worked_hours || (p.accumulated_time ? p.accumulated_time / 3600 : 0) || 0);
       if (name) { ttHours[name] = Math.round(hours * 10) / 10; count++; }
     }
 
@@ -866,8 +853,7 @@ function fmtHours(h) {
         ttHours = {};
         for (const p of projectsData) {
           const name = (p.name || p.title || '').toLowerCase().trim();
-          const rawTime = p.logged_time || p.logged_hours || p.duration || p.total_time || p.hours || 0;
-          const hours = typeof rawTime === 'number' ? (rawTime > 1000 ? rawTime / 3600 : rawTime) : 0;
+          const hours = parseFloat(p.worked_hours || (p.accumulated_time ? p.accumulated_time / 3600 : 0) || 0);
           if (name) ttHours[name] = Math.round(hours * 10) / 10;
         }
         document.getElementById('btn-tt').classList.add('connected');
