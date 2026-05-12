@@ -796,6 +796,8 @@ async function connectAndSync() {
 
     ttHours = {};
     let count = 0;
+    // Debug: log first item to see field names
+    if (projectsData.length > 0) console.log('TT first project raw:', JSON.stringify(projectsData[0]));
     for (const p of projectsData) {
       const name = (p.name || p.title || p.project_name || '').toLowerCase().trim();
       const rawTime = p.logged_time || p.logged_hours || p.duration || p.total_time || p.hours || p.time || 0;
