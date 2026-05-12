@@ -750,15 +750,13 @@ function deleteItem() {
 function hideModal() { document.getElementById('modal-overlay').classList.remove('open'); modalRow = null; }
 function closeModal(e) { if (e.target === document.getElementById('modal-overlay')) hideModal(); }
 
-/* ── TrackingTime Integration ── */
-let ttHours = {}; // { projectNameLower: hours }
-let ttProjectList = []; // [{name, hours}] for dropdown
+/* ── TrackingTime CSV Import ── */
+let ttHours = {};
+let ttProjectList = [];
 
 function openTTModal() {
-  const stored = JSON.parse(localStorage.getItem('tt_creds') || '{}');
-  document.getElementById('tt-email').value = stored.email || '';
-  document.getElementById('tt-pass').value = stored.pass || '';
-  document.getElementById('tt-account').value = stored.account || '657424';
+  const stored = localStorage.getItem('tt_csv_data');
+  document.getElementById('tt-csv').value = stored || '';
   document.getElementById('tt-error').style.display = 'none';
   document.getElementById('tt-status').style.display = 'none';
   document.getElementById('tt-modal-overlay').style.display = 'flex';
@@ -769,122 +767,79 @@ function closeTTModal(e) {
     document.getElementById('tt-modal-overlay').style.display = 'none';
 }
 
-function disconnectTT() {
-  localStorage.removeItem('tt_creds');
-  ttHours = {};
+function clearTT() {
+  localStorage.removeItem('tt_csv_data');
+  ttHours = {}; ttProjectList = [];
+  document.getElementById('tt-csv').value = '';
   document.getElementById('btn-tt').classList.remove('connected');
   document.getElementById('btn-tt').textContent = '⏱ TrackingTime';
   document.getElementById('tt-modal-overlay').style.display = 'none';
   render();
 }
 
-async function connectAndSync() {
-  const email = document.getElementById('tt-email').value.trim();
-  const pass = document.getElementById('tt-pass').value.trim();
-  const account = document.getElementById('tt-account').value.trim();
+function importCSV() {
+  const csv = document.getElementById('tt-csv').value.trim();
   const errEl = document.getElementById('tt-error');
   const statEl = document.getElementById('tt-status');
   errEl.style.display = 'none';
-  statEl.style.display = 'none';
 
-  if (!email || !pass || !account) { errEl.textContent = 'Completează toate câmpurile.'; errEl.style.display = 'block'; return; }
+  if (!csv) { errEl.textContent = 'Lipește conținutul CSV înainte de import.'; errEl.style.display = 'block'; return; }
 
-  const auth = btoa(email + ':' + pass);
-  localStorage.setItem('tt_creds', JSON.stringify({ email, pass, account }));
+  // Parse CSV — flexible: handles various TT export formats
+  const lines = csv.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) { errEl.textContent = 'CSV invalid — trebuie cel puțin un header și un rând de date.'; errEl.style.display = 'block'; return; }
 
-  statEl.textContent = 'Se preiau datele...'; statEl.style.display = 'block';
+  const header = lines[0].toLowerCase().split(',').map(h => h.replace(/"/g,'').trim());
+  const projCol = header.findIndex(h => h.includes('project') || h.includes('proiect') || h.includes('task'));
+  const hoursCol = header.findIndex(h => h.includes('hour') || h.includes('ore') || h.includes('duration') || h.includes('time') || h.includes('total'));
 
-  try {
-    const auth2 = btoa(email + ':' + pass);
-    statEl.textContent = 'Se preiau datele...'; statEl.style.display = 'block';
+  if (projCol === -1) { errEl.textContent = 'Nu găsesc coloana cu proiectul. Asigură-te că CSV-ul are o coloană "Project" sau "Task".'; errEl.style.display = 'block'; return; }
+  if (hoursCol === -1) { errEl.textContent = 'Nu găsesc coloana cu orele. Asigură-te că CSV-ul are o coloană "Hours", "Duration" sau "Total".'; errEl.style.display = 'block'; return; }
 
-    // Simple direct call - no extra params that might break the API
-    // Fetch time events and aggregate hours per project
-    const yearStart = new Date().getFullYear() + '-01-01';
-    const yearEnd = new Date().getFullYear() + '-12-31';
-    let projectsData = [];
+  const hoursMap = {};
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.replace(/"/g,'').trim());
+    const proj = cols[projCol] || '';
+    const rawH = cols[hoursCol] || '0';
+    if (!proj) continue;
 
-    // Try events endpoint with date range
-    const evtUrls = [
-      `https://app.trackingtime.co/api/v4/events?from=${yearStart}&to=${yearEnd}`,
-      `https://app.trackingtime.co/api/v4/events`,
-      `https://app.trackingtime.co/api/v4/time_entries?from=${yearStart}&to=${yearEnd}`,
-    ];
-
-    const evtUrl = `https://app.trackingtime.co/api/v4/events?from=${yearStart}&to=${yearEnd}`;
-    const evtResp = await fetch(evtUrl, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
-    const evtRaw = evtResp.ok ? await evtResp.json() : null;
-    statEl.textContent = evtResp.status + ' | keys: ' + (evtRaw ? Object.keys(evtRaw).join(',') : 'null') + ' | ' + JSON.stringify(evtRaw).substring(0, 300);
-    statEl.style.display = 'block'; statEl.style.fontSize = '10px'; statEl.style.color = 'var(--t2)'; statEl.style.wordBreak = 'break-all'; statEl.style.maxHeight = '100px'; statEl.style.overflow = 'auto';
-    return; // Stop here to show debug
-      // Fallback: try projects/tasks list
-      for (const url of [`https://app.trackingtime.co/api/v4/projects`, `https://app.trackingtime.co/api/v4/tasks`]) {
-        const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
-        if (r.ok) {
-          const d = await r.json();
-          projectsData = d.data || d.response?.data || (Array.isArray(d) ? d : []);
-          if (projectsData.length > 0) { usedUrl = url; break; }
-        }
-      }
+    // Parse hours: accepts "42.5", "42:30" (HH:MM), "42h 30min"
+    let hours = 0;
+    if (rawH.includes(':')) {
+      const [h, m] = rawH.split(':').map(Number);
+      hours = h + (m || 0) / 60;
     } else {
-      // Aggregate hours per project from events
-      const hoursMap = {};
-      for (const evt of rawEvents) {
-        const proj = (evt.project_name || evt.task_name || evt.project || evt.name || '').trim();
-        const secs = parseFloat(evt.duration || evt.seconds || evt.time || 0);
-        if (proj) hoursMap[proj] = (hoursMap[proj] || 0) + secs;
-      }
-      projectsData = Object.entries(hoursMap).map(([name, secs]) => ({
-        name,
-        worked_hours: secs > 1000 ? secs / 3600 : secs
-      }));
+      hours = parseFloat(rawH.replace(/[^0-9.]/g,'')) || 0;
     }
-
-    statEl.textContent = `✓ ${usedUrl.split('/').pop()?.split('?')[0]} → ${projectsData.length} proiecte`;
-    statEl.style.display = 'block'; statEl.style.fontSize = '11px'; statEl.style.color = 'var(--green)';
-    if (projectsData.length === 0) throw new Error('API-ul nu returnează date. Verifică permisiunile app password-ului în TrackingTime.');
-
-    ttHours = {};
-    ttProjectList = [];
-    let count = 0;
-    for (const p of projectsData) {
-      const name = (p.name || p.title || p.project_name || '').toLowerCase().trim();
-      const displayName = (p.name || p.title || p.project_name || '').trim();
-      const hours = parseFloat(p.worked_hours || (p.accumulated_time ? p.accumulated_time / 3600 : 0) || 0);
-      if (name) {
-        ttHours[name] = Math.round(hours * 10) / 10;
-        ttProjectList.push({ name, displayName, hours: Math.round(hours * 10) / 10 });
-        count++;
-      }
-    }
-    ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
-
-    statEl.textContent = `✓ ${count} proiecte sincronizate din TrackingTime`;
-    if (count === 0) statEl.textContent = '⚠ Conectat, dar 0 proiecte găsite. Verifică că ai proiecte active în TrackingTime.';
-    document.getElementById('btn-tt').classList.add('connected');
-    document.getElementById('btn-tt').textContent = '⏱ TT (' + Object.keys(ttHours).length + ')';
-
-    setTimeout(() => document.getElementById('tt-modal-overlay').style.display = 'none', 1500);
-    render();
-
-  } catch (e) {
-    errEl.textContent = e.message || 'Eroare conexiune. Verifică credențialele.';
-    errEl.style.display = 'block';
-    statEl.style.display = 'none';
+    hoursMap[proj] = (hoursMap[proj] || 0) + hours;
   }
+
+  ttHours = {};
+  ttProjectList = [];
+  for (const [name, hours] of Object.entries(hoursMap)) {
+    const key = name.toLowerCase().trim();
+    ttHours[key] = Math.round(hours * 10) / 10;
+    ttProjectList.push({ name: key, displayName: name, hours: Math.round(hours * 10) / 10 });
+  }
+  ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  localStorage.setItem('tt_csv_data', csv);
+  const count = ttProjectList.length;
+  statEl.textContent = `✓ ${count} proiecte importate din CSV`;
+  statEl.style.display = 'block';
+  document.getElementById('btn-tt').classList.add('connected');
+  document.getElementById('btn-tt').textContent = `⏱ TT (${count})`;
+  setTimeout(() => { document.getElementById('tt-modal-overlay').style.display = 'none'; }, 1200);
+  render();
 }
 
 function getTTHours(projectName, ttLink) {
-  // Use explicit mapping if set
   if (ttLink && ttHours[ttLink] !== undefined) return ttHours[ttLink];
   if (!projectName || !Object.keys(ttHours).length) return null;
   const name = projectName.toLowerCase();
   if (ttHours[name] !== undefined) return ttHours[name];
-  // Partial match fallback
   for (const [k, v] of Object.entries(ttHours)) {
-    if (name.includes(k) || k.includes(name) || name.split(/[_\s]+/).some(part => part.length > 3 && k.includes(part.toLowerCase()))) {
-      return v;
-    }
+    if (name.includes(k) || k.includes(name) || name.split(/[_\s]+/).some(part => part.length > 3 && k.includes(part.toLowerCase()))) return v;
   }
   return null;
 }
@@ -892,47 +847,49 @@ function getTTHours(projectName, ttLink) {
 function fmtHours(h) {
   if (h === null || h === undefined) return '';
   if (h === 0) return '0h';
-  if (h < 0.1) return Math.round(h * 60) + 'min';
-  if (h < 1) return Math.round(h * 60) + 'min';
   const hrs = Math.floor(h);
   const mins = Math.round((h - hrs) * 60);
+  if (hrs === 0) return `${mins}min`;
   if (mins === 0) return `${hrs}h`;
   return `${hrs}h ${mins}min`;
 }
 
-// Auto-sync on load if credentials stored
-(async () => {
-  const stored = JSON.parse(localStorage.getItem('tt_creds') || '{}');
-  if (stored.email && stored.pass && stored.account) {
-    try {
-      const auth = btoa(stored.email + ':' + stored.pass);
-      let all = [];
-      for (const url of [`https://app.trackingtime.co/api/v4/projects`, `https://app.trackingtime.co/api/v4/tasks`]) {
-        const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' } });
-        if (r.ok) {
-          const d = await r.json();
-          const items = d.data || d.response?.data || (Array.isArray(d) ? d : []);
-          if (items.length > 0) { all = items; break; }
-        }
+// Restore from localStorage on load
+(function() {
+  const stored = localStorage.getItem('tt_csv_data');
+  if (stored) {
+    document.getElementById('tt-csv') && (document.getElementById('tt-csv').value = stored);
+    // Re-parse silently
+    setTimeout(() => {
+      const csv = stored.trim();
+      const lines = csv.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) return;
+      const header = lines[0].toLowerCase().split(',').map(h => h.replace(/"/g,'').trim());
+      const projCol = header.findIndex(h => h.includes('project') || h.includes('task'));
+      const hoursCol = header.findIndex(h => h.includes('hour') || h.includes('duration') || h.includes('time') || h.includes('total'));
+      if (projCol === -1 || hoursCol === -1) return;
+      const hoursMap = {};
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map(c => c.replace(/"/g,'').trim());
+        const proj = cols[projCol] || ''; const rawH = cols[hoursCol] || '0';
+        if (!proj) continue;
+        let hours = rawH.includes(':') ? (() => { const [h,m] = rawH.split(':').map(Number); return h + (m||0)/60; })() : parseFloat(rawH.replace(/[^0-9.]/g,''))||0;
+        hoursMap[proj] = (hoursMap[proj] || 0) + hours;
       }
-      if (all.length > 0) {
-        ttHours = {};
-        ttProjectList = [];
-        for (const p of all) {
-          const name = (p.name || p.title || '').toLowerCase().trim();
-          const displayName = (p.name || p.title || '').trim();
-          const hours = parseFloat(p.worked_hours || (p.accumulated_time ? p.accumulated_time / 3600 : 0) || 0);
-          if (name) {
-            ttHours[name] = hours;
-            ttProjectList.push({ name, displayName, hours });
-          }
-        }
-        ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      ttHours = {}; ttProjectList = [];
+      for (const [name, hours] of Object.entries(hoursMap)) {
+        const key = name.toLowerCase().trim();
+        ttHours[key] = Math.round(hours * 10) / 10;
+        ttProjectList.push({ name: key, displayName: name, hours: Math.round(hours * 10) / 10 });
+      }
+      ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      const count = ttProjectList.length;
+      if (count > 0) {
         document.getElementById('btn-tt').classList.add('connected');
-        document.getElementById('btn-tt').textContent = '⏱ TT (' + Object.keys(ttHours).length + ')';
+        document.getElementById('btn-tt').textContent = `⏱ TT (${count})`;
         render();
       }
-    } catch(e) { console.log('TT auto-sync failed:', e); }
+    }, 500);
   }
 })();
 
@@ -946,26 +903,23 @@ initMsal().catch(console.error);
   <div onclick="event.stopPropagation()" style="background:var(--bg1);border:1px solid var(--bd);border-radius:var(--rlg);padding:28px;width:440px;max-width:95vw;box-shadow:0 10px 40px rgba(0,0,0,.2)">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
       <span style="font-size:20px">⏱</span>
-      <span style="font-weight:700;font-size:15px;flex:1">Conectare TrackingTime</span>
+      <span style="font-weight:700;font-size:15px;flex:1">Import ore din TrackingTime</span>
       <button onclick="document.getElementById('tt-modal-overlay').style.display='none'" style="background:none;border:none;font-size:18px;color:var(--t3);cursor:pointer">×</button>
     </div>
-    <div class="field-group">
-      <label class="field-label">Email cont TrackingTime</label>
-      <input class="field-input" id="tt-email" type="email" placeholder="email@companie.de">
+    <div style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.6;background:var(--bg2);padding:10px;border-radius:var(--r)">
+      <strong>Cum exportezi din TrackingTime:</strong><br>
+      Reports → Time Report → selectezi perioada → <strong>Export → CSV</strong><br>
+      Apoi deschizi fișierul CSV și copiezi conținutul jos.
     </div>
     <div class="field-group">
-      <label class="field-label">App Password</label>
-      <input class="field-input" id="tt-pass" type="password" placeholder="App password din Settings → Apps & Integrations">
+      <label class="field-label">Lipește conținutul CSV aici</label>
+      <textarea id="tt-csv" style="width:100%;height:140px;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:8px;color:var(--t1);font-size:11px;font-family:monospace;resize:vertical;outline:none" placeholder="Project,Hours&#10;Tasks Casino65,42.5&#10;Tasks Hamburg,28.3&#10;..."></textarea>
     </div>
-    <div class="field-group">
-      <label class="field-label">Account ID</label>
-      <input class="field-input" id="tt-account" placeholder="657424">
-    </div>
-    <div id="tt-error" style="font-size:12px;color:var(--red);margin-bottom:12px;display:none"></div>
-    <div id="tt-status" style="font-size:12px;color:var(--green);margin-bottom:12px;display:none"></div>
+    <div id="tt-error" style="font-size:12px;color:var(--red);margin-bottom:8px;display:none"></div>
+    <div id="tt-status" style="font-size:12px;color:var(--green);margin-bottom:8px;display:none"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-      <button onclick="disconnectTT()" style="padding:8px 14px;border-radius:var(--r);border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">Deconectează</button>
-      <button onclick="connectAndSync()" style="padding:8px 18px;border-radius:var(--r);border:none;background:#e8401c;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Sincronizează orele</button>
+      <button onclick="clearTT()" style="padding:8px 14px;border-radius:var(--r);border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">Resetează</button>
+      <button onclick="importCSV()" style="padding:8px 18px;border-radius:var(--r);border:none;background:#e8401c;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Importă orele</button>
     </div>
   </div>
 </div>
