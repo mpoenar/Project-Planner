@@ -760,24 +760,33 @@ async function connectAndSync() {
   statEl.textContent = 'Se preiau datele...'; statEl.style.display = 'block';
 
   try {
-    const resp = await fetch(`https://app.trackingtime.co/api/v4/accounts/${account}/projects?status=ALL`, {
-      headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' }
+    // Try the correct TrackingTime API endpoint
+    const resp = await fetch(`https://app.trackingtime.co/api/v4/projects`, {
+      headers: { 
+        'Authorization': 'Basic ' + auth, 
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
     });
 
-    if (!resp.ok) { throw new Error('Autentificare eșuată (' + resp.status + ')'); }
+    if (resp.status === 401) throw new Error('Autentificare eșuată — verifică email și app password');
+    if (!resp.ok) throw new Error('Eroare API (' + resp.status + ')');
 
     const data = await resp.json();
-    const projectsData = data.data || data.response?.data || data || [];
+    const projectsData = data.data || data.response?.data || (Array.isArray(data) ? data : []);
 
     ttHours = {};
     let count = 0;
     for (const p of projectsData) {
-      const name = (p.name || p.title || '').toLowerCase();
-      const hours = parseFloat(p.logged_hours || p.duration || p.total_time || p.hours || 0);
-      if (name) { ttHours[name] = hours; count++; }
+      const name = (p.name || p.title || '').toLowerCase().trim();
+      // TrackingTime stores duration in seconds or minutes - normalize to hours
+      const rawTime = p.logged_time || p.logged_hours || p.duration || p.total_time || p.hours || 0;
+      const hours = typeof rawTime === 'number' ? (rawTime > 1000 ? rawTime / 3600 : rawTime) : 0;
+      if (name) { ttHours[name] = Math.round(hours * 10) / 10; count++; }
     }
 
     statEl.textContent = `✓ ${count} proiecte sincronizate din TrackingTime`;
+    if (count === 0) statEl.textContent = '⚠ Conectat, dar 0 proiecte găsite. Verifică că ai proiecte active în TrackingTime.';
     document.getElementById('btn-tt').classList.add('connected');
     document.getElementById('btn-tt').textContent = '⏱ TT (' + Object.keys(ttHours).length + ')';
 
@@ -818,17 +827,18 @@ function fmtHours(h) {
   if (stored.email && stored.pass && stored.account) {
     try {
       const auth = btoa(stored.email + ':' + stored.pass);
-      const resp = await fetch(`https://app.trackingtime.co/api/v4/accounts/${stored.account}/projects?status=ALL`, {
-        headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' }
+      const resp = await fetch(`https://app.trackingtime.co/api/v4/projects`, {
+        headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json', 'Content-Type': 'application/json' }
       });
       if (resp.ok) {
         const data = await resp.json();
-        const projectsData = data.data || data.response?.data || data || [];
+        const projectsData = data.data || data.response?.data || (Array.isArray(data) ? data : []);
         ttHours = {};
         for (const p of projectsData) {
-          const name = (p.name || p.title || '').toLowerCase();
-          const hours = parseFloat(p.logged_hours || p.duration || p.total_time || p.hours || 0);
-          if (name) ttHours[name] = hours;
+          const name = (p.name || p.title || '').toLowerCase().trim();
+          const rawTime = p.logged_time || p.logged_hours || p.duration || p.total_time || p.hours || 0;
+          const hours = typeof rawTime === 'number' ? (rawTime > 1000 ? rawTime / 3600 : rawTime) : 0;
+          if (name) ttHours[name] = Math.round(hours * 10) / 10;
         }
         document.getElementById('btn-tt').classList.add('connected');
         document.getElementById('btn-tt').textContent = '⏱ TT (' + Object.keys(ttHours).length + ')';
