@@ -801,10 +801,8 @@ async function connectAndSync() {
     // Simple direct call - no extra params that might break the API
     let projectsData = [];
     const tryUrls = [
-      `https://app.trackingtime.co/api/v4/tasks`,
       `https://app.trackingtime.co/api/v4/projects`,
-      `https://app.trackingtime.co/api/v4/tasks?type=PROJECT`,
-      `https://app.trackingtime.co/api/v4/tasks?assigned=false`,
+      `https://app.trackingtime.co/api/v4/tasks`,
     ];
     let usedUrl = '';
     for (const url of tryUrls) {
@@ -815,9 +813,9 @@ async function connectAndSync() {
         if (items.length > 0) { projectsData = items; usedUrl = url; break; }
       }
     }
-    statEl.textContent = `Endpoint: ${usedUrl} → ${projectsData.length} proiecte`;
+    statEl.textContent = usedUrl ? `✓ ${usedUrl.split('/').pop()} → ${projectsData.length} proiecte` : 'Niciun endpoint nu returnează date';
     statEl.style.display = 'block'; statEl.style.fontSize = '11px'; statEl.style.color = 'var(--t2)';
-    if (projectsData.length === 0) throw new Error('Nu s-au găsit proiecte. Încearcă din TrackingTime → Network tab ce URL returnează date.');
+    if (projectsData.length === 0) throw new Error('Nu s-au găsit proiecte. Verifică app password-ul.');
 
     ttHours = {};
     ttProjectList = [];
@@ -882,12 +880,13 @@ function fmtHours(h) {
     try {
       const auth = btoa(stored.email + ':' + stored.pass);
       let all = [];
-      const r = await fetch(`https://app.trackingtime.co/api/v4/tasks?filter=TRACKING`, {
-        headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' }
-      });
-      if (r.ok) {
-        const d = await r.json();
-        all = d.data || d.response?.data || (Array.isArray(d) ? d : []);
+      for (const url of [`https://app.trackingtime.co/api/v4/projects`, `https://app.trackingtime.co/api/v4/tasks`]) {
+        const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' } });
+        if (r.ok) {
+          const d = await r.json();
+          const items = d.data || d.response?.data || (Array.isArray(d) ? d : []);
+          if (items.length > 0) { all = items; break; }
+        }
       }
       if (all.length > 0) {
         ttHours = {};
