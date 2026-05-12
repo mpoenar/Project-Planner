@@ -800,7 +800,7 @@ async function connectAndSync() {
 
     // Simple direct call - no extra params that might break the API
     let projectsData = null;
-    const resp1 = await fetch(`https://app.trackingtime.co/api/v4/tasks`, {
+    const resp1 = await fetch(`https://app.trackingtime.co/api/v4/tasks?filter=TRACKING`, {
       headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' }
     });
     if (resp1.ok) {
@@ -808,7 +808,7 @@ async function connectAndSync() {
       projectsData = d.data || d.response?.data || (Array.isArray(d) ? d : []);
     }
     if (!projectsData || projectsData.length === 0) {
-      const resp2 = await fetch(`https://app.trackingtime.co/api/v4/projects`, {
+      const resp2 = await fetch(`https://app.trackingtime.co/api/v4/tasks`, {
         headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' }
       });
       if (resp2.ok) {
@@ -890,7 +890,7 @@ function fmtHours(h) {
     try {
       const auth = btoa(stored.email + ':' + stored.pass);
       let all = [];
-      const r = await fetch(`https://app.trackingtime.co/api/v4/tasks`, {
+      const r = await fetch(`https://app.trackingtime.co/api/v4/tasks?filter=TRACKING`, {
         headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' }
       });
       if (r.ok) {
