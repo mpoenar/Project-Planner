@@ -811,20 +811,12 @@ async function connectAndSync() {
       `https://app.trackingtime.co/api/v4/time_entries?from=${yearStart}&to=${yearEnd}`,
     ];
 
-    let rawEvents = [];
-    let usedUrl = '';
-    for (const url of evtUrls) {
-      const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
-      if (r.ok) {
-        const d = await r.json();
-        // Debug: show raw structure
-        statEl.textContent = 'RAW keys: ' + Object.keys(d).join(', ') + ' | ' + JSON.stringify(d).substring(0, 200);
-        statEl.style.display = 'block'; statEl.style.fontSize = '10px'; statEl.style.color = 'var(--t2)'; statEl.style.wordBreak = 'break-all';
-        const items = d.data || d.response?.data || d.events || d.time_entries || (Array.isArray(d) ? d : []);
-        if (items && items.length > 0) { rawEvents = items; usedUrl = url; break; }
-      }
-    }
-    if (rawEvents.length === 0 && !usedUrl) {
+    const evtUrl = `https://app.trackingtime.co/api/v4/events?from=${yearStart}&to=${yearEnd}`;
+    const evtResp = await fetch(evtUrl, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
+    const evtRaw = evtResp.ok ? await evtResp.json() : null;
+    statEl.textContent = evtResp.status + ' | keys: ' + (evtRaw ? Object.keys(evtRaw).join(',') : 'null') + ' | ' + JSON.stringify(evtRaw).substring(0, 300);
+    statEl.style.display = 'block'; statEl.style.fontSize = '10px'; statEl.style.color = 'var(--t2)'; statEl.style.wordBreak = 'break-all'; statEl.style.maxHeight = '100px'; statEl.style.overflow = 'auto';
+    return; // Stop here to show debug
       // Fallback: try projects/tasks list
       for (const url of [`https://app.trackingtime.co/api/v4/projects`, `https://app.trackingtime.co/api/v4/tasks`]) {
         const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
