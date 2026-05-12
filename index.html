@@ -799,33 +799,25 @@ async function connectAndSync() {
     statEl.textContent = 'Se preiau datele...'; statEl.style.display = 'block';
 
     // Simple direct call - no extra params that might break the API
-    let projectsData = null;
-    const resp1 = await fetch(`https://app.trackingtime.co/api/v4/tasks?filter=TRACKING`, {
-      headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' }
-    });
-    if (resp1.ok) {
-      const d = await resp1.json();
-      projectsData = d.data || d.response?.data || (Array.isArray(d) ? d : []);
-    }
-    if (!projectsData || projectsData.length === 0) {
-      const resp2 = await fetch(`https://app.trackingtime.co/api/v4/tasks`, {
-        headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' }
-      });
-      if (resp2.ok) {
-        const d = await resp2.json();
-        projectsData = d.data || d.response?.data || (Array.isArray(d) ? d : []);
+    let projectsData = [];
+    const tryUrls = [
+      `https://app.trackingtime.co/api/v4/tasks`,
+      `https://app.trackingtime.co/api/v4/projects`,
+      `https://app.trackingtime.co/api/v4/tasks?type=PROJECT`,
+      `https://app.trackingtime.co/api/v4/tasks?assigned=false`,
+    ];
+    let usedUrl = '';
+    for (const url of tryUrls) {
+      const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
+      if (r.ok) {
+        const d = await r.json();
+        const items = d.data || d.response?.data || (Array.isArray(d) ? d : []);
+        if (items.length > 0) { projectsData = items; usedUrl = url; break; }
       }
     }
-    if (!projectsData || projectsData.length === 0) throw new Error('Nu s-au găsit proiecte în TrackingTime.');
-
-    // Show debug info in status
-    statEl.textContent = `Găsite ${projectsData.length} proiecte. Primul: ${JSON.stringify(projectsData[0]).substring(0,150)}`;
-    statEl.style.display = 'block';
-    statEl.style.color = 'var(--t2)';
-    statEl.style.fontSize = '10px';
-    statEl.style.wordBreak = 'break-all';
-    statEl.style.maxHeight = '120px';
-    statEl.style.overflow = 'auto';
+    statEl.textContent = `Endpoint: ${usedUrl} → ${projectsData.length} proiecte`;
+    statEl.style.display = 'block'; statEl.style.fontSize = '11px'; statEl.style.color = 'var(--t2)';
+    if (projectsData.length === 0) throw new Error('Nu s-au găsit proiecte. Încearcă din TrackingTime → Network tab ce URL returnează date.');
 
     ttHours = {};
     ttProjectList = [];
