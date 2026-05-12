@@ -622,7 +622,8 @@ function openModal(itemId, projectId) {
     `<div class="swatch${c===row.color?' active':''}" style="background:${c}" onclick="pickColor('${c}')"></div>`
   ).join('');
   document.getElementById('m-statuses').innerHTML = Object.entries(STATUSES).map(([k,v]) =>
-    `<button class="status-btn${row.status===k?' active':''}" style="color:${row.status===k?v.color:'var(--t2)'};border-color:${row.status===k?v.color:'var(--bd)'}"
+    `<button class="status-btn${row.status===k?' active':''}"
+      style="color:${v.color};border-color:${row.status===k?v.color:'var(--bd)'};background:${row.status===k?'var(--bg2)':'transparent'}"
       onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
   syncModal();
@@ -646,7 +647,8 @@ function pickColor(color) {
 function pickStatus(key) {
   if (modalRow) modalRow.status = key;
   document.getElementById('m-statuses').innerHTML = Object.entries(STATUSES).map(([k,v]) =>
-    `<button class="status-btn${k===key?' active':''}" style="color:${k===key?v.color:'var(--t2)'};border-color:${k===key?v.color:'var(--bd)'}"
+    `<button class="status-btn${k===key?' active':''}"
+      style="color:${v.color};border-color:${k===key?v.color:'var(--bd)'};background:${k===key?'var(--bg2)':'transparent'}"
       onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
 }
