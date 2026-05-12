@@ -226,6 +226,13 @@ input[type=range]{width:100%;accent-color:var(--blue)}
         <input type="date" class="field-input" id="m-end" onchange="syncModal()">
       </div>
     </div>
+    <div class="field-group" id="m-tt-group" style="display:none">
+      <label class="field-label">🕐 TrackingTime Project</label>
+      <select class="field-input" id="m-tt-link" style="cursor:pointer">
+        <option value="">— Neselectat —</option>
+      </select>
+      <div id="m-tt-hours" style="font-size:11px;color:#e8401c;margin-top:4px;display:none"></div>
+    </div>
     <div class="field-group">
       <label class="field-label">Status</label>
       <div class="status-buttons" id="m-statuses"></div>
@@ -558,7 +565,7 @@ function render() {
     const cellBg = i % 2 === 0 ? 'var(--bg1)' : 'var(--bg2)';
     const barVisible = x < totalW && x + w > 0;
 
-    const ttH = (row.isProject && Object.keys(ttHours).length) ? getTTHours(row.name) : null;
+    const ttH = (row.isProject && Object.keys(ttHours).length) ? getTTHours(row.name, row.ttLink) : null;
     const ttLabel = ttH !== null ? ` · ⏱ ${fmtHours(ttH)}` : '';
 
     const gridLines = MONTHS.map(m => `<div class="grid-line" style="left:${m.off * PPD}px"></div>`).join('');
@@ -587,7 +594,7 @@ function render() {
         <div class="color-dot${row.isProject?' project':''}" style="background:${row.color}"></div>
         <span class="row-name ${row.isProject?'project':'task'}">${isOvlp?'<span style="color:var(--red);margin-right:4px">⚠</span>':''}${row.name}</span>
         <span class="status-icon" style="color:${st.color}">${st.icon}</span>
-        ${(() => { if (!row.isProject || !Object.keys(ttHours).length) return ''; const h = getTTHours(row.name); return h !== null ? `<span class="tt-hours">⏱ ${fmtHours(h)}</span>` : '<span class="tt-hours" style="color:var(--t3)">⏱ –</span>'; })()}
+        ${(() => { if (!row.isProject || !Object.keys(ttHours).length) return ''; const h = getTTHours(row.name, row.ttLink); return h !== null ? `<span class="tt-hours">⏱ ${fmtHours(h)}</span>` : ''; })()}
         ${addBtn}
       </div>
       <div class="timeline-cell" style="width:${totalW}px">${gridLines}${todayLine}${bar}</div>
@@ -657,6 +664,29 @@ function openModal(itemId, projectId) {
       style="color:${v.color};border-color:${row.status===k?v.color:'var(--bd)'};background:${row.status===k?'var(--bg2)':'transparent'}"
       onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
+
+  // TT dropdown — only for projects
+  const ttGroup = document.getElementById('m-tt-group');
+  const ttSelect = document.getElementById('m-tt-link');
+  const ttHoursEl = document.getElementById('m-tt-hours');
+  if (row.isProject && ttProjectList.length > 0) {
+    ttGroup.style.display = '';
+    ttSelect.innerHTML = '<option value="">— Neselectat —</option>' +
+      ttProjectList.map(p => `<option value="${p.name}" ${row.ttLink===p.name?'selected':''}>${p.displayName} (⏱ ${fmtHours(p.hours)})</option>`).join('');
+    const h = row.ttLink ? ttHours[row.ttLink] : null;
+    if (h !== null && h !== undefined) {
+      ttHoursEl.textContent = `⏱ ${fmtHours(h)} pontate în TrackingTime`;
+      ttHoursEl.style.display = '';
+    } else { ttHoursEl.style.display = 'none'; }
+    ttSelect.onchange = () => {
+      const h2 = ttSelect.value ? ttHours[ttSelect.value] : null;
+      ttHoursEl.textContent = h2 !== null && h2 !== undefined ? `⏱ ${fmtHours(h2)} pontate în TrackingTime` : '';
+      ttHoursEl.style.display = h2 !== null && h2 !== undefined ? '' : 'none';
+    };
+  } else {
+    ttGroup.style.display = 'none';
+  }
+
   syncModal();
   document.getElementById('modal-overlay').classList.add('open');
 }
@@ -702,8 +732,9 @@ function saveItem() {
   }
 
   if (modalRow.isProject) {
+    const ttLink = document.getElementById('m-tt-link')?.value || '';
     const p = projects.find(x => x.id === modalRow.id);
-    if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color });
+    if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color, ttLink });
   } else {
     const p = projects.find(x => x.id === modalRow.projectId);
     if (p) { const t = p.tasks.find(x => x.id === modalRow.id); if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color }); }
@@ -721,6 +752,7 @@ function closeModal(e) { if (e.target === document.getElementById('modal-overlay
 
 /* ── TrackingTime Integration ── */
 let ttHours = {}; // { projectNameLower: hours }
+let ttProjectList = []; // [{name, hours}] for dropdown
 
 function openTTModal() {
   const stored = JSON.parse(localStorage.getItem('tt_creds') || '{}');
@@ -795,12 +827,19 @@ async function connectAndSync() {
     }
 
     ttHours = {};
+    ttProjectList = [];
     let count = 0;
     for (const p of projectsData) {
       const name = (p.name || p.title || p.project_name || '').toLowerCase().trim();
+      const displayName = (p.name || p.title || p.project_name || '').trim();
       const hours = parseFloat(p.worked_hours || (p.accumulated_time ? p.accumulated_time / 3600 : 0) || 0);
-      if (name) { ttHours[name] = Math.round(hours * 10) / 10; count++; }
+      if (name) {
+        ttHours[name] = Math.round(hours * 10) / 10;
+        ttProjectList.push({ name, displayName, hours: Math.round(hours * 10) / 10 });
+        count++;
+      }
     }
+    ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
     statEl.textContent = `✓ ${count} proiecte sincronizate din TrackingTime`;
     if (count === 0) statEl.textContent = '⚠ Conectat, dar 0 proiecte găsite. Verifică că ai proiecte active în TrackingTime.';
@@ -817,14 +856,15 @@ async function connectAndSync() {
   }
 }
 
-function getTTHours(projectName) {
-  if (!projectName) return null;
+function getTTHours(projectName, ttLink) {
+  // Use explicit mapping if set
+  if (ttLink && ttHours[ttLink] !== undefined) return ttHours[ttLink];
+  if (!projectName || !Object.keys(ttHours).length) return null;
   const name = projectName.toLowerCase();
-  // Exact match
   if (ttHours[name] !== undefined) return ttHours[name];
-  // Partial match - find TT project that contains key part of Gantt name
+  // Partial match fallback
   for (const [k, v] of Object.entries(ttHours)) {
-    if (name.includes(k) || k.includes(name) || name.split('_').some(part => part.length > 3 && k.includes(part.toLowerCase()))) {
+    if (name.includes(k) || k.includes(name) || name.split(/[_\s]+/).some(part => part.length > 3 && k.includes(part.toLowerCase()))) {
       return v;
     }
   }
@@ -851,11 +891,17 @@ function fmtHours(h) {
         const data = await resp.json();
         const projectsData = data.data || data.response?.data || (Array.isArray(data) ? data : []);
         ttHours = {};
+        ttProjectList = [];
         for (const p of projectsData) {
           const name = (p.name || p.title || '').toLowerCase().trim();
+          const displayName = (p.name || p.title || '').trim();
           const hours = parseFloat(p.worked_hours || (p.accumulated_time ? p.accumulated_time / 3600 : 0) || 0);
-          if (name) ttHours[name] = Math.round(hours * 10) / 10;
+          if (name) {
+            ttHours[name] = Math.round(hours * 10) / 10;
+            ttProjectList.push({ name, displayName, hours: Math.round(hours * 10) / 10 });
+          }
         }
+        ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
         document.getElementById('btn-tt').classList.add('connected');
         document.getElementById('btn-tt').textContent = '⏱ TT (' + Object.keys(ttHours).length + ')';
         render();
