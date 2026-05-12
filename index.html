@@ -818,6 +818,15 @@ async function connectAndSync() {
     }
     if (!projectsData || projectsData.length === 0) throw new Error('Nu s-au găsit proiecte în TrackingTime.');
 
+    // Show debug info in status
+    statEl.textContent = `Găsite ${projectsData.length} proiecte. Primul: ${JSON.stringify(projectsData[0]).substring(0,150)}`;
+    statEl.style.display = 'block';
+    statEl.style.color = 'var(--t2)';
+    statEl.style.fontSize = '10px';
+    statEl.style.wordBreak = 'break-all';
+    statEl.style.maxHeight = '120px';
+    statEl.style.overflow = 'auto';
+
     ttHours = {};
     ttProjectList = [];
     let count = 0;
