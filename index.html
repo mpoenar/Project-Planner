@@ -794,6 +794,16 @@ async function connectAndSync() {
       throw new Error('Endpoint negăsit. Ultimul răspuns: ' + lastError);
     }
 
+    // Debug: show raw first project in modal
+    if (projectsData.length > 0) {
+      statEl.textContent = 'RAW: ' + JSON.stringify(projectsData[0]).substring(0, 300);
+      statEl.style.display = 'block';
+      statEl.style.color = 'var(--t2)';
+      statEl.style.fontSize = '10px';
+      statEl.style.wordBreak = 'break-all';
+      return; // Stop here so user can read the raw data
+    }
+
     ttHours = {};
     let count = 0;
     // Debug: log first item to see field names
