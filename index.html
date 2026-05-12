@@ -412,7 +412,6 @@ function showLoading(v) {
 
 /* ── Gantt config ── */
 const VIEW_START = '2026-05-01';
-const TOTAL_DAYS = 184;
 let PPD = 22;
 let showOverlaps = false;
 
@@ -467,18 +466,28 @@ let projects = [
 ];
 
 /* ── Helpers ── */
-function getMonths() {
-  const out = []; let d = new Date('2026-05-01T00:00:00'), off = 0;
-  while (off < TOTAL_DAYS) {
+function calcTotalDays() {
+  if (!projects.length) return 184;
+  const maxMs = projects.reduce((max, p) => {
+    const pEnd = d2ms(p.end);
+    const tEnd = p.tasks.reduce((m, t) => Math.max(m, d2ms(t.end)), pEnd);
+    return Math.max(max, tEnd);
+  }, d2ms(addD(VIEW_START, 184)));
+  return Math.max(184, diff(VIEW_START, new Date(maxMs).toISOString().split('T')[0]) + 30);
+}
+
+function getMonths(totalDays) {
+  const out = []; let d = new Date(VIEW_START + 'T00:00:00'), off = 0;
+  while (off < totalDays) {
     const m = d.getMonth(), y = d.getFullYear();
     const next = new Date(y, m + 1, 1);
-    const days = Math.min(Math.round((next - d) / 86400000), TOTAL_DAYS - off);
+    const days = Math.min(Math.round((next - d) / 86400000), totalDays - off);
     out.push({ label: d.toLocaleString('ro-RO', {month:'short'}).toUpperCase() + ' ' + y, off, days });
     off += days; d = next;
   }
   return out;
 }
-const MONTHS = getMonths();
+
 
 function flatRows(search) {
   const q = search.toLowerCase();
@@ -513,7 +522,9 @@ function render() {
   const search = document.getElementById('search').value;
   const rows = flatRows(search);
   const overlaps = showOverlaps ? getOverlaps() : new Set();
-  const totalW = TOTAL_DAYS * PPD;
+  const totalDays = calcTotalDays();
+  const MONTHS = getMonths(totalDays);
+  const totalW = totalDays * PPD;
   const todayX = diff(VIEW_START, todayStr()) * PPD;
 
   document.getElementById('zoom-val').textContent = PPD + 'px/zi';
@@ -524,7 +535,7 @@ function render() {
   ).join('');
 
   document.getElementById('week-row').innerHTML =
-    Array.from({length: Math.ceil(TOTAL_DAYS / 7)}, (_, i) =>
+    Array.from({length: Math.ceil(totalDays / 7)}, (_, i) =>
       `<div class="week-cell" style="width:${7 * PPD}px">${PPD >= 14 ? 'S' + (i + 19) : ''}</div>`
     ).join('') +
     (todayX >= 0 && todayX <= totalW
