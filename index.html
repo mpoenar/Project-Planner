@@ -672,7 +672,13 @@ function saveItem() {
   const color = as ? (as.style.backgroundColor || as.style.background) : modalRow.color;
 
   // Auto-rename if duplicate
-  if (modalRow.isProject) name = uniqueName(name, modalRow.id);
+  if (modalRow.isProject) {
+    const newName = uniqueName(name, modalRow.id);
+    if (newName !== name) {
+      if (!confirm(`Există deja un proiect cu numele "${name}".\nSalvez ca "${newName}"?`)) return;
+      name = newName;
+    }
+  }
 
   if (modalRow.isProject) {
     const p = projects.find(x => x.id === modalRow.id);
