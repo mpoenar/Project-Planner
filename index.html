@@ -585,11 +585,18 @@ function toggleCollapse(id) {
   const p = projects.find(x => x.id === id);
   if (p) { p.collapsed = !p.collapsed; render(); }
 }
+function uniqueName(name, excludeId) {
+  const base = name.replace(/ \(\d+\)$/, '');
+  const taken = projects.filter(p => p.id !== excludeId && (p.name === base || p.name.match(new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ' \\(\\d+\\)$'))));
+  if (taken.length === 0) return base;
+  let n = 2;
+  while (projects.some(p => p.id !== excludeId && p.name === base + ' (' + n + ')')) n++;
+  return base + ' (' + n + ')';
+}
+
 function addProject() {
   const t = todayStr();
-  let name = 'Proiect nou';
-  const existing = projects.filter(p => p.name === name || p.name.startsWith(name + ' ('));
-  if (existing.length > 0) name = name + ' (' + (existing.length + 1) + ')';
+  const name = uniqueName('Proiect nou', null);
   projects.push({id:uid(),name,color:PALETTE[projects.length%PALETTE.length],
     collapsed:false,start:t,end:addD(t,30),status:'none',progress:0,tasks:[]});
   render(); queueSave();
@@ -657,20 +664,15 @@ function pickStatus(key) {
 }
 function saveItem() {
   if (!modalRow) return;
-  const name = document.getElementById('m-name').value.trim() || 'Fără nume';
+  let name = document.getElementById('m-name').value.trim() || 'Fără nume';
   const start = document.getElementById('m-start').value;
   const end = document.getElementById('m-end').value;
   const progress = +document.getElementById('m-progress').value;
   const as = document.querySelector('.swatch.active');
   const color = as ? (as.style.backgroundColor || as.style.background) : modalRow.color;
 
-  // Check duplicate name
-  if (modalRow.isProject) {
-    const duplicate = projects.find(p => p.name === name && p.id !== modalRow.id);
-    if (duplicate) {
-      if (!confirm(`Există deja un proiect cu numele "${name}". Continui oricum?`)) return;
-    }
-  }
+  // Auto-rename if duplicate
+  if (modalRow.isProject) name = uniqueName(name, modalRow.id);
 
   if (modalRow.isProject) {
     const p = projects.find(x => x.id === modalRow.id);
