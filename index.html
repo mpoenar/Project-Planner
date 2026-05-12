@@ -165,13 +165,13 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 
 <!-- ── Legend / Filters ── -->
 <div id="legend">
-  <button class="filter-btn active" data-status="all" onclick="setFilter('all')" style="color:var(--t1)">Toate</button>
-  <button class="filter-btn" data-status="in-progress" onclick="setFilter('in-progress')" style="--fc:var(--green)">◑ In Progress</button>
-  <button class="filter-btn" data-status="delayed" onclick="setFilter('delayed')" style="--fc:var(--orange)">⊗ Delayed</button>
-  <button class="filter-btn" data-status="at-risk" onclick="setFilter('at-risk')" style="--fc:#b45309">⚠ At Risk</button>
-  <button class="filter-btn" data-status="problem" onclick="setFilter('problem')" style="--fc:var(--red)">! Problem</button>
-  <button class="filter-btn" data-status="cancelled" onclick="setFilter('cancelled')" style="--fc:var(--t3)">✕ Cancelled</button>
-  <button class="filter-btn" data-status="completed" onclick="setFilter('completed')" style="--fc:var(--green)">✓ Completed</button>
+  <button class="filter-btn active" data-status="all" onclick="setFilter('all')">Toate</button>
+  <button class="filter-btn" data-status="in-progress" onclick="setFilter('in-progress')" style="color:var(--green)">◑ In Progress</button>
+  <button class="filter-btn" data-status="delayed" onclick="setFilter('delayed')" style="color:var(--orange)">⊗ Delayed</button>
+  <button class="filter-btn" data-status="at-risk" onclick="setFilter('at-risk')" style="color:#b45309">⚠ At Risk</button>
+  <button class="filter-btn" data-status="problem" onclick="setFilter('problem')" style="color:var(--red)">! Problem</button>
+  <button class="filter-btn" data-status="cancelled" onclick="setFilter('cancelled')" style="color:var(--t3)">✕ Cancelled</button>
+  <button class="filter-btn" data-status="completed" onclick="setFilter('completed')" style="color:var(--green)">✓ Completed</button>
   <span class="hint">Dublu-click pe bară pentru editare</span>
 </div>
 
@@ -431,14 +431,16 @@ const TCOLORS = ['#5dcaa5','#85b7eb','#97c459','#afa9ec','#ef9f27','#1d9e75','#d
 let _id = 1, activeFilter = 'all';
 const uid = () => 'r' + (_id++);
 
+const STATUS_COLORS = { all:'var(--t1)', 'in-progress':'var(--green)', delayed:'var(--orange)', 'at-risk':'#b45309', problem:'var(--red)', cancelled:'var(--t3)', completed:'var(--green)' };
+
 function setFilter(status) {
   activeFilter = status;
   document.querySelectorAll('.filter-btn').forEach(b => {
     const isActive = b.dataset.status === status;
     b.classList.toggle('active', isActive);
-    const fc = b.style.getPropertyValue('--fc') || 'var(--t1)';
-    b.style.color = isActive ? (b.style.getPropertyValue('--fc') || 'var(--t1)') : 'var(--t2)';
-    b.style.borderColor = isActive ? (b.style.getPropertyValue('--fc') || 'var(--bd2)') : 'var(--bd)';
+    b.style.fontWeight = isActive ? '700' : '400';
+    b.style.borderColor = isActive ? (STATUS_COLORS[b.dataset.status] || 'var(--bd2)') : 'var(--bd)';
+    b.style.background = isActive ? 'var(--bg1)' : 'transparent';
   });
   render();
 }
