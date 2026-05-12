@@ -800,8 +800,9 @@ async function connectAndSync() {
 
     async function fetchAllPages(baseUrl) {
       let all = [], page = 1;
+      const sep = baseUrl.includes('?') ? '&' : '?';
       while (true) {
-        const resp = await fetch(`${baseUrl}&page=${page}`, {
+        const resp = await fetch(`${baseUrl}${sep}page=${page}`, {
           headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' }
         });
         if (!resp.ok) return null;
@@ -809,7 +810,7 @@ async function connectAndSync() {
         const items = data.data || data.response?.data || (Array.isArray(data) ? data : []);
         if (items.length === 0) break;
         all = all.concat(items);
-        if (items.length < 50) break; // last page
+        if (items.length < 50) break;
         page++;
       }
       return all;
@@ -817,8 +818,8 @@ async function connectAndSync() {
 
     let projectsData = null;
     const urls = [
-      `https://app.trackingtime.co/api/v4/tasks?per_page=100&status=ALL`,
-      `https://app.trackingtime.co/api/v4/projects?per_page=100&status=ALL`,
+      `https://app.trackingtime.co/api/v4/tasks?per_page=100`,
+      `https://app.trackingtime.co/api/v4/projects?per_page=100`,
     ];
     for (const url of urls) {
       projectsData = await fetchAllPages(url);
@@ -890,7 +891,7 @@ function fmtHours(h) {
       const auth = btoa(stored.email + ':' + stored.pass);
       let all = [], page = 1;
       while (true) {
-        const resp = await fetch(`https://app.trackingtime.co/api/v4/tasks?per_page=100&status=ALL&page=${page}`, {
+        const resp = await fetch(`https://app.trackingtime.co/api/v4/tasks?per_page=100&page=${page}`, {
           headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' }
         });
         if (!resp.ok) break;
