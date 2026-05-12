@@ -817,12 +817,14 @@ async function connectAndSync() {
       const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
       if (r.ok) {
         const d = await r.json();
-        const items = d.data || d.response?.data || (Array.isArray(d) ? d : []);
-        if (items.length > 0) { rawEvents = items; usedUrl = url; break; }
+        // Debug: show raw structure
+        statEl.textContent = 'RAW keys: ' + Object.keys(d).join(', ') + ' | ' + JSON.stringify(d).substring(0, 200);
+        statEl.style.display = 'block'; statEl.style.fontSize = '10px'; statEl.style.color = 'var(--t2)'; statEl.style.wordBreak = 'break-all';
+        const items = d.data || d.response?.data || d.events || d.time_entries || (Array.isArray(d) ? d : []);
+        if (items && items.length > 0) { rawEvents = items; usedUrl = url; break; }
       }
     }
-
-    if (rawEvents.length === 0) {
+    if (rawEvents.length === 0 && !usedUrl) {
       // Fallback: try projects/tasks list
       for (const url of [`https://app.trackingtime.co/api/v4/projects`, `https://app.trackingtime.co/api/v4/tasks`]) {
         const r = await fetch(url, { headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' } });
