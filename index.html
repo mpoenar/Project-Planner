@@ -795,36 +795,36 @@ async function connectAndSync() {
   statEl.textContent = 'Se preiau datele...'; statEl.style.display = 'block';
 
   try {
-    // TrackingTime API: projects are called "tasks" at top level
-    // Try multiple endpoints to find the correct one
-    let projectsData = [];
-    
-    const endpoints = [
-      `https://app.trackingtime.co/api/v4/tasks`,
-      `https://app.trackingtime.co/api/v4/projects`,
-      `https://app.trackingtime.co/api/v4/accounts/${account}/tasks`,
-    ];
+    const auth2 = btoa(email + ':' + pass);
+    statEl.textContent = 'Se preiau datele...'; statEl.style.display = 'block';
 
-    let lastError = '';
-    for (const url of endpoints) {
-      const resp = await fetch(url, {
-        headers: { 
-          'Authorization': 'Basic ' + auth, 
-          'Accept': 'application/json'
-        }
-      });
-      if (resp.ok) {
+    async function fetchAllPages(baseUrl) {
+      let all = [], page = 1;
+      while (true) {
+        const resp = await fetch(`${baseUrl}&page=${page}`, {
+          headers: { 'Authorization': 'Basic ' + auth2, 'Accept': 'application/json' }
+        });
+        if (!resp.ok) return null;
         const data = await resp.json();
-        projectsData = data.data || data.response?.data || (Array.isArray(data) ? data : []);
-        if (projectsData.length > 0) break;
-      } else {
-        lastError = `${url} → ${resp.status}`;
+        const items = data.data || data.response?.data || (Array.isArray(data) ? data : []);
+        if (items.length === 0) break;
+        all = all.concat(items);
+        if (items.length < 50) break; // last page
+        page++;
       }
+      return all;
     }
 
-    if (projectsData.length === 0 && lastError) {
-      throw new Error('Endpoint negăsit. Ultimul răspuns: ' + lastError);
+    let projectsData = null;
+    const urls = [
+      `https://app.trackingtime.co/api/v4/tasks?per_page=100&status=ALL`,
+      `https://app.trackingtime.co/api/v4/projects?per_page=100&status=ALL`,
+    ];
+    for (const url of urls) {
+      projectsData = await fetchAllPages(url);
+      if (projectsData && projectsData.length > 0) break;
     }
+    if (!projectsData || projectsData.length === 0) throw new Error('Nu s-au găsit proiecte în TrackingTime.');
 
     ttHours = {};
     ttProjectList = [];
@@ -874,8 +874,12 @@ function getTTHours(projectName, ttLink) {
 function fmtHours(h) {
   if (h === null || h === undefined) return '';
   if (h === 0) return '0h';
+  if (h < 0.1) return Math.round(h * 60) + 'min';
   if (h < 1) return Math.round(h * 60) + 'min';
-  return Math.round(h * 10) / 10 + 'h';
+  const hrs = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  if (mins === 0) return `${hrs}h`;
+  return `${hrs}h ${mins}min`;
 }
 
 // Auto-sync on load if credentials stored
@@ -884,21 +888,29 @@ function fmtHours(h) {
   if (stored.email && stored.pass && stored.account) {
     try {
       const auth = btoa(stored.email + ':' + stored.pass);
-      const resp = await fetch(`https://app.trackingtime.co/api/v4/projects`, {
-        headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json', 'Content-Type': 'application/json' }
-      });
-      if (resp.ok) {
+      let all = [], page = 1;
+      while (true) {
+        const resp = await fetch(`https://app.trackingtime.co/api/v4/tasks?per_page=100&status=ALL&page=${page}`, {
+          headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' }
+        });
+        if (!resp.ok) break;
         const data = await resp.json();
-        const projectsData = data.data || data.response?.data || (Array.isArray(data) ? data : []);
+        const items = data.data || data.response?.data || (Array.isArray(data) ? data : []);
+        if (items.length === 0) break;
+        all = all.concat(items);
+        if (items.length < 50) break;
+        page++;
+      }
+      if (all.length > 0) {
         ttHours = {};
         ttProjectList = [];
-        for (const p of projectsData) {
+        for (const p of all) {
           const name = (p.name || p.title || '').toLowerCase().trim();
           const displayName = (p.name || p.title || '').trim();
           const hours = parseFloat(p.worked_hours || (p.accumulated_time ? p.accumulated_time / 3600 : 0) || 0);
           if (name) {
-            ttHours[name] = Math.round(hours * 10) / 10;
-            ttProjectList.push({ name, displayName, hours: Math.round(hours * 10) / 10 });
+            ttHours[name] = hours;
+            ttProjectList.push({ name, displayName, hours });
           }
         }
         ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
