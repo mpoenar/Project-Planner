@@ -45,9 +45,12 @@ input{font-family:inherit}
 #btn-overlaps.active{background:#fde8ec;color:var(--red);border-color:#f5c6cb}
 #user-btn{height:28px;padding:0 10px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px}
 
-/* Legend */
-#legend{background:var(--bg2);border-bottom:1px solid var(--bd);padding:4px 16px;display:flex;gap:18px;align-items:center;flex-shrink:0;overflow-x:auto;white-space:nowrap}
+/* Legend / filter buttons */
+#legend{background:var(--bg2);border-bottom:1px solid var(--bd);padding:4px 16px;display:flex;gap:8px;align-items:center;flex-shrink:0;overflow-x:auto;white-space:nowrap}
 #legend .hint{margin-left:auto;font-size:10px;color:var(--t3)}
+.filter-btn{height:24px;padding:0 10px;border-radius:20px;border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .15s;white-space:nowrap}
+.filter-btn:hover{border-color:var(--bd2);background:var(--bg1)}
+.filter-btn.active{background:var(--bg1);font-weight:600}
 
 /* Gantt */
 #gantt{flex:1;overflow:auto;position:relative}
@@ -160,14 +163,15 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <button id="user-btn" onclick="logout()" title="Deconectare">👤 <span id="user-name"></span></button>
 </div>
 
-<!-- ── Legend ── -->
+<!-- ── Legend / Filters ── -->
 <div id="legend">
-  <span style="font-size:11px;color:var(--t2)">◑ <span style="color:var(--green)">In Progress</span></span>
-  <span style="font-size:11px;color:var(--t2)">⊗ <span style="color:var(--orange)">Delayed</span></span>
-  <span style="font-size:11px;color:var(--t2)">⚠ <span style="color:#b45309">At Risk</span></span>
-  <span style="font-size:11px;color:var(--t2)">! <span style="color:var(--red)">Problem</span></span>
-  <span style="font-size:11px;color:var(--t2)">✕ <span style="color:var(--t3)">Cancelled</span></span>
-  <span style="font-size:11px;color:var(--t2)">✓ <span style="color:var(--green)">Completed</span></span>
+  <button class="filter-btn active" data-status="all" onclick="setFilter('all')" style="color:var(--t1)">Toate</button>
+  <button class="filter-btn" data-status="in-progress" onclick="setFilter('in-progress')" style="--fc:var(--green)">◑ In Progress</button>
+  <button class="filter-btn" data-status="delayed" onclick="setFilter('delayed')" style="--fc:var(--orange)">⊗ Delayed</button>
+  <button class="filter-btn" data-status="at-risk" onclick="setFilter('at-risk')" style="--fc:#b45309">⚠ At Risk</button>
+  <button class="filter-btn" data-status="problem" onclick="setFilter('problem')" style="--fc:var(--red)">! Problem</button>
+  <button class="filter-btn" data-status="cancelled" onclick="setFilter('cancelled')" style="--fc:var(--t3)">✕ Cancelled</button>
+  <button class="filter-btn" data-status="completed" onclick="setFilter('completed')" style="--fc:var(--green)">✓ Completed</button>
   <span class="hint">Dublu-click pe bară pentru editare</span>
 </div>
 
@@ -424,8 +428,20 @@ const STATUSES = {
 const PALETTE = ['#e24b4a','#378add','#1d9e75','#7f77dd','#ba7517','#0f6e56','#d85a30','#d4537e'];
 const TCOLORS = ['#5dcaa5','#85b7eb','#97c459','#afa9ec','#ef9f27','#1d9e75','#d85a30','#ed93b1'];
 
-let _id = 1;
+let _id = 1, activeFilter = 'all';
 const uid = () => 'r' + (_id++);
+
+function setFilter(status) {
+  activeFilter = status;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    const isActive = b.dataset.status === status;
+    b.classList.toggle('active', isActive);
+    const fc = b.style.getPropertyValue('--fc') || 'var(--t1)';
+    b.style.color = isActive ? (b.style.getPropertyValue('--fc') || 'var(--t1)') : 'var(--t2)';
+    b.style.borderColor = isActive ? (b.style.getPropertyValue('--fc') || 'var(--bd2)') : 'var(--bd)';
+  });
+  render();
+}
 function d2ms(s) { return new Date(s + 'T00:00:00').getTime(); }
 function diff(a, b) { return Math.round((d2ms(b) - d2ms(a)) / 86400000); }
 function addD(s, n) { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0]; }
@@ -466,10 +482,14 @@ function flatRows(search) {
   const q = search.toLowerCase();
   const rows = [];
   for (const p of projects) {
-    if (q && !p.name.toLowerCase().includes(q) && !p.tasks.some(t => t.name.toLowerCase().includes(q))) continue;
+    const matchSearch = !q || p.name.toLowerCase().includes(q) || p.tasks.some(t => t.name.toLowerCase().includes(q));
+    if (!matchSearch) continue;
+    const matchFilter = activeFilter === 'all' || p.status === activeFilter || p.tasks.some(t => t.status === activeFilter);
+    if (!matchFilter) continue;
     rows.push({ ...p, isProject: true, depth: 0 });
     if (!p.collapsed) for (const t of p.tasks) {
       if (q && !t.name.toLowerCase().includes(q) && !p.name.toLowerCase().includes(q)) continue;
+      if (activeFilter !== 'all' && t.status !== activeFilter && p.status !== activeFilter) continue;
       rows.push({ ...t, isProject: false, depth: 1, projectId: p.id });
     }
   }
