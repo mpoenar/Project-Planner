@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Project Planner</title>
-<script src="https://unpkg.com/@azure/msal-browser@3.7.1/lib/msal-browser.min.js"></script>
+<script src="https://unpkg.com/@azure/msal-browser@2.38.0/lib/msal-browser.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -261,7 +261,6 @@ async function initMsal() {
     cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
   };
   msalInstance = new msal.PublicClientApplication(config);
-  await msalInstance.initialize();
 
   // Check existing session
   const accounts = msalInstance.getAllAccounts();
