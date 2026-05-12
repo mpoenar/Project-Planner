@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Planner</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg0:#f5f6f8;--bg1:#fff;--bg2:#f0f1f4;
+  --t1:#1c1c1e;--t2:#636369;--t3:#aeaeb2;
+  --bd:rgba(0,0,0,.10);--bd2:rgba(0,0,0,.18);
+  --red:#d7263d;--blue:#1672d1;--green:#1d9e75;--orange:#d05c0a;
+  --r:8px;--rlg:12px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--bg0);color:var(--t1);height:100vh;overflow:hidden;font-size:13px;display:flex;flex-direction:column}
+button{font-family:inherit;cursor:pointer}
+input{font-family:inherit}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
+
+/* Toolbar */
+#toolbar{background:var(--bg1);border-bottom:1px solid var(--bd);padding:0 16px;height:48px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+#toolbar .title{font-weight:700;font-size:14px;letter-spacing:-.01em}
+#toolbar .sep{width:1px;height:18px;background:var(--bd);margin:0 4px}
+#btn-overlaps{height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;transition:all .15s}
+#btn-overlaps.active{background:#fde8ec;color:var(--red);border-color:#f5c6cb}
+#search{height:28px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t1);padding:0 10px;font-size:12px;width:160px;outline:none}
+.spacer{flex:1}
+.zoom-lbl{font-size:11px;color:var(--t2)}
+.zbtn{width:28px;height:28px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t1);font-size:15px;line-height:1}
+#zoom-val{font-size:11px;color:var(--t2);min-width:36px;text-align:center}
+#btn-add-project{height:30px;padding:0 14px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700}
+
+/* Legend */
+#legend{background:var(--bg2);border-bottom:1px solid var(--bd);padding:4px 16px;display:flex;gap:18px;align-items:center;flex-shrink:0;overflow-x:auto;white-space:nowrap}
+#legend .hint{margin-left:auto;font-size:10px;color:var(--t3)}
+
+/* Main gantt area */
+#gantt{flex:1;overflow:auto;position:relative}
+#gantt-inner{display:inline-flex;flex-direction:column;min-width:100%}
+
+/* Header row */
+#gantt-header{display:flex;position:sticky;top:0;z-index:20;height:54px;background:var(--bg1);border-bottom:1px solid var(--bd);flex-shrink:0;box-shadow:0 1px 0 var(--bd)}
+.left-header{width:290px;flex-shrink:0;position:sticky;left:0;z-index:30;background:var(--bg1);border-right:1px solid var(--bd);display:flex;align-items:center;padding:0 16px}
+.left-header span{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.1em}
+#timeline-header{flex-shrink:0;position:relative}
+.month-row{display:flex;height:55%;border-bottom:1px solid var(--bd)}
+.week-row{display:flex;height:45%;position:relative}
+.month-cell{flex-shrink:0;font-size:10px;font-weight:700;color:var(--t2);display:flex;align-items:center;padding-left:8px;border-right:1px solid var(--bd);letter-spacing:.06em}
+.week-cell{flex-shrink:0;font-size:9px;color:var(--t3);display:flex;align-items:center;padding-left:4px;border-right:1px solid var(--bd)}
+#today-head{position:absolute;top:0;bottom:0;width:2px;background:var(--red);z-index:5}
+#today-lbl{position:absolute;top:0;left:4px;font-size:9px;color:var(--red);white-space:nowrap}
+
+/* Data rows */
+.gantt-row{display:flex;flex-shrink:0;border-bottom:1px solid var(--bd)}
+.gantt-row.even{background:var(--bg1)}
+.gantt-row.odd{background:var(--bg2)}
+.left-cell{width:290px;flex-shrink:0;position:sticky;left:0;z-index:10;border-right:1px solid var(--bd);display:flex;align-items:center;padding:0 6px 0 12px;gap:5px;height:42px}
+.left-cell.depth1{padding-left:36px}
+.toggle-btn{width:14px;font-size:9px;color:var(--t3);cursor:pointer;user-select:none;flex-shrink:0;background:none;border:none;padding:0}
+.color-dot{width:9px;height:9px;flex-shrink:0;border-radius:50%}
+.color-dot.project{border-radius:2px}
+.row-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-name.project{font-weight:700;font-size:12.5px}
+.row-name.task{font-size:11.5px;color:var(--t2)}
+.status-icon{font-size:11px;flex-shrink:0}
+.add-task-btn{background:none;border:none;color:var(--t3);font-size:18px;line-height:1;padding:0 2px;flex-shrink:0}
+.timeline-cell{flex-shrink:0;position:relative;overflow:hidden;height:42px}
+.grid-line{position:absolute;top:0;bottom:0;width:1px;background:var(--bd);pointer-events:none}
+.today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--red);opacity:.6;pointer-events:none;z-index:4}
+.bar{position:absolute;display:flex;align-items:center;overflow:hidden;cursor:pointer;transition:opacity .15s}
+.bar:hover{opacity:.95!important}
+.bar-progress{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.25);border-right:1px solid rgba(255,255,255,.35)}
+.bar-label{position:relative;z-index:1;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.95);padding-left:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Footer */
+#gantt-footer{display:flex;height:44px;flex-shrink:0}
+.footer-left{width:290px;flex-shrink:0;position:sticky;left:0;z-index:10;background:var(--bg1);border-right:1px solid var(--bd);display:flex;align-items:center;justify-content:center;border-top:1px solid var(--bd)}
+.footer-left button{background:none;border:none;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer}
+.footer-right{flex-shrink:0;border-top:1px solid var(--bd);background:var(--bg1)}
+
+/* Modal overlay */
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center}
+#modal-overlay.open{display:flex}
+#modal{background:var(--bg1);border:1px solid var(--bd);border-radius:var(--rlg);padding:28px;width:480px;max-width:95vw;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+.modal-header{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.modal-color-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.modal-title{font-weight:700;font-size:15px;flex:1}
+.modal-days{font-size:11px;color:var(--t3)}
+.modal-close{background:none;border:none;font-size:18px;color:var(--t3);cursor:pointer;line-height:1}
+.field-group{margin-bottom:14px}
+.field-label{display:block;font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}
+.field-input{width:100%;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:7px 10px;color:var(--t1);font-size:13px;outline:none;font-family:inherit}
+.date-row{display:flex;gap:12px;margin-bottom:14px}
+.date-row>div{flex:1}
+.color-swatches{display:flex;gap:8px}
+.swatch{width:26px;height:26px;border-radius:5px;cursor:pointer;border:2.5px solid transparent;transition:border .1s}
+.swatch.active{border-color:var(--t1)}
+.status-buttons{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.status-btn{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--r);border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:11.5px;cursor:pointer;font-family:inherit}
+.status-btn.active{background:var(--bg2)}
+.progress-bar-bg{height:5px;background:var(--bg2);border-radius:3px;margin-bottom:6px;overflow:hidden}
+.progress-bar-fill{height:100%;background:var(--blue);border-radius:3px}
+.modal-actions{display:flex;align-items:center;justify-content:space-between;margin-top:20px}
+.btn-delete{padding:8px 16px;border-radius:var(--r);border:1px solid #f5c6cb;background:#fde8ec;color:var(--red);font-size:12px;font-weight:700}
+.btn-cancel{padding:8px 16px;border-radius:var(--r);border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px}
+.btn-save{padding:8px 18px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700}
+input[type=range]{width:100%;accent-color:var(--blue)}
+</style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div id="toolbar">
+  <span class="title">📋 Project Planner</span>
+  <span class="sep"></span>
+  <button id="btn-overlaps" onclick="toggleOverlaps()">⚠ Suprapuneri</button>
+  <input id="search" placeholder="Caută proiect…" oninput="render()">
+  <span class="spacer"></span>
+  <span class="zoom-lbl">Zoom</span>
+  <button class="zbtn" onclick="zoom(-3)">−</button>
+  <span id="zoom-val">22px/zi</span>
+  <button class="zbtn" onclick="zoom(3)">+</button>
+  <button id="btn-add-project" onclick="addProject()">+ Proiect nou</button>
+</div>
+
+<!-- Legend -->
+<div id="legend">
+  <span style="font-size:11px;color:var(--t2)">◑ <span style="color:var(--t2)">In Progress</span></span>
+  <span style="font-size:11px;color:var(--t2)">⊗ <span style="color:var(--orange)">Delayed</span></span>
+  <span style="font-size:11px;color:var(--t2)">⚠ <span style="color:#b45309">At Risk</span></span>
+  <span style="font-size:11px;color:var(--t2)">! <span style="color:var(--red)">Problem</span></span>
+  <span style="font-size:11px;color:var(--t2)">✕ <span style="color:var(--t3)">Cancelled</span></span>
+  <span style="font-size:11px;color:var(--t2)">✓ <span style="color:var(--green)">Completed</span></span>
+  <span class="hint">Dublu-click pe bară pentru editare</span>
+</div>
+
+<!-- Gantt -->
+<div id="gantt">
+  <div id="gantt-inner">
+    <div id="gantt-header">
+      <div class="left-header"><span>Proiecte &amp; Taskuri</span></div>
+      <div id="timeline-header">
+        <div class="month-row" id="month-row"></div>
+        <div class="week-row" id="week-row">
+          <div id="today-head"><span id="today-lbl">azi</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="rows-container"></div>
+    <div id="gantt-footer">
+      <div class="footer-left"><button onclick="addProject()">+ Adaugă proiect</button></div>
+      <div class="footer-right" id="footer-right"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal">
+    <div class="modal-header">
+      <div class="modal-color-dot" id="m-color-dot"></div>
+      <span class="modal-title" id="m-title-lbl"></span>
+      <span class="modal-days" id="m-days"></span>
+      <button class="modal-close" onclick="hideModal()">×</button>
+    </div>
+    <div class="field-group">
+      <label class="field-label">Denumire</label>
+      <input class="field-input" id="m-name" oninput="syncModal()">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Culoare</label>
+      <div class="color-swatches" id="m-colors"></div>
+    </div>
+    <div class="date-row">
+      <div>
+        <label class="field-label">Data start</label>
+        <input type="date" class="field-input" id="m-start" onchange="syncModal()">
+      </div>
+      <div>
+        <label class="field-label">Data final</label>
+        <input type="date" class="field-input" id="m-end" onchange="syncModal()">
+      </div>
+    </div>
+    <div class="field-group">
+      <label class="field-label">Status</label>
+      <div class="status-buttons" id="m-statuses"></div>
+    </div>
+    <div class="field-group">
+      <label class="field-label" id="m-prog-lbl">Progres — 0%</label>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="m-prog-fill"></div></div>
+      <input type="range" min="0" max="100" id="m-progress" oninput="syncModal()">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-delete" onclick="deleteItem()">Șterge</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-cancel" onclick="hideModal()">Anulează</button>
+        <button class="btn-save" onclick="saveItem()">Salvează</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Config ── */
+const VIEW_START = '2026-05-01';
+const TOTAL_DAYS = 184;
+let PPD = 22;
+
+const STATUSES = {
+  none:          { label:'None',        icon:'–',  color:'var(--t3)' },
+  'in-progress': { label:'In Progress', icon:'◑',  color:'var(--green)' },
+  delayed:       { label:'Delayed',     icon:'⊗',  color:'var(--orange)' },
+  'at-risk':     { label:'At Risk',     icon:'⚠',  color:'#b45309' },
+  problem:       { label:'Problem',     icon:'!',  color:'var(--red)' },
+  cancelled:     { label:'Cancelled',   icon:'✕',  color:'var(--t3)' },
+  completed:     { label:'Completed',   icon:'✓',  color:'var(--green)' },
+};
+const PALETTE = ['#e24b4a','#378add','#1d9e75','#7f77dd','#ba7517','#0f6e56','#d85a30','#d4537e'];
+const TCOLORS = ['#5dcaa5','#85b7eb','#97c459','#afa9ec','#ef9f27','#1d9e75','#d85a30','#ed93b1'];
+
+let _id = 1;
+const uid = () => 'r' + (_id++);
+let showOverlaps = false;
+
+function toggleOverlaps() {
+  showOverlaps = !showOverlaps;
+  document.getElementById('btn-overlaps').classList.toggle('active', showOverlaps);
+  render();
+}
+
+function d2ms(s) { return new Date(s + 'T00:00:00').getTime(); }
+function diff(a, b) { return Math.round((d2ms(b) - d2ms(a)) / 86400000); }
+function addD(s, n) { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0]; }
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+/* ── Data ── */
+let projects = [
+  {id:'p1',name:'Casinostraße 63',color:'#e24b4a',collapsed:false,start:'2026-05-20',end:'2026-05-27',status:'none',progress:0,tasks:[]},
+  {id:'p2',name:'Casinostraße 65',color:'#e24b4a',collapsed:false,start:'2026-06-01',end:'2026-09-15',status:'in-progress',progress:20,tasks:[
+    {id:'p2a',name:'Entwurfsplanung Casinostraße 65',color:'#1d9e75',start:'2026-06-01',end:'2026-07-15',status:'in-progress',progress:30},
+    {id:'p2b',name:'Ausführungsplanung Casinostraße 65',color:'#378add',start:'2026-06-15',end:'2026-08-30',status:'none',progress:0},
+  ]},
+  {id:'p3',name:'2605_27 HKL Hanseatischer Hof Lübeck',color:'#0f6e56',collapsed:false,start:'2026-05-25',end:'2026-07-20',status:'none',progress:0,tasks:[]},
+  {id:'p4',name:'2601_17 PLS_24_23 Hamburg',color:'#ba7517',collapsed:false,start:'2026-06-01',end:'2026-08-15',status:'none',progress:0,tasks:[]},
+  {id:'p5',name:'2603_25 P238 Schwansee',color:'#7f77dd',collapsed:false,start:'2026-05-15',end:'2026-06-25',status:'none',progress:0,tasks:[
+    {id:'p5a',name:'2601_18 AP 140 DH',color:'#378add',start:'2026-06-01',end:'2026-07-10',status:'none',progress:0},
+  ]},
+  {id:'p6',name:'2602_22 PLS Hofmannhöfe',color:'#e24b4a',collapsed:false,start:'2026-07-01',end:'2026-09-30',status:'none',progress:0,tasks:[]},
+  {id:'p7',name:'2599_02 AP 133 HDO',color:'#ba7517',collapsed:false,start:'2026-06-01',end:'2026-08-20',status:'none',progress:0,tasks:[]},
+];
+
+/* ── Helpers ── */
+function getMonths() {
+  const out = []; let d = new Date('2026-05-01T00:00:00'), off = 0;
+  while (off < TOTAL_DAYS) {
+    const m = d.getMonth(), y = d.getFullYear();
+    const next = new Date(y, m + 1, 1);
+    const days = Math.min(Math.round((next - d) / 86400000), TOTAL_DAYS - off);
+    out.push({ label: d.toLocaleString('ro-RO', {month:'short'}).toUpperCase() + ' ' + y, off, days });
+    off += days; d = next;
+  }
+  return out;
+}
+const MONTHS = getMonths();
+
+function flatRows(search) {
+  const q = search.toLowerCase();
+  const rows = [];
+  for (const p of projects) {
+    if (q && !p.name.toLowerCase().includes(q) && !p.tasks.some(t => t.name.toLowerCase().includes(q))) continue;
+    rows.push({ ...p, isProject: true, depth: 0 });
+    if (!p.collapsed) {
+      for (const t of p.tasks) {
+        if (q && !t.name.toLowerCase().includes(q) && !p.name.toLowerCase().includes(q)) continue;
+        rows.push({ ...t, isProject: false, depth: 1, projectId: p.id });
+      }
+    }
+  }
+  return rows;
+}
+
+function getOverlaps() {
+  const s = new Set();
+  for (let i = 0; i < projects.length; i++)
+    for (let j = i + 1; j < projects.length; j++) {
+      const a = projects[i], b = projects[j];
+      if (d2ms(a.start) < d2ms(b.end) && d2ms(b.start) < d2ms(a.end)) { s.add(a.id); s.add(b.id); }
+    }
+  return s;
+}
+
+function tx(s) { return diff(VIEW_START, s) * PPD; }
+function tw(s, e) { return Math.max(diff(s, e) * PPD, 6); }
+
+/* ── Render ── */
+function render() {
+  const search = document.getElementById('search').value;
+  const rows = flatRows(search);
+  const overlaps = showOverlaps ? getOverlaps() : new Set();
+  const totalW = TOTAL_DAYS * PPD;
+  const todayX = diff(VIEW_START, todayStr()) * PPD;
+
+  // Zoom label
+  document.getElementById('zoom-val').textContent = PPD + 'px/zi';
+
+  // Timeline header width
+  document.getElementById('timeline-header').style.width = totalW + 'px';
+
+  // Month row
+  document.getElementById('month-row').innerHTML = MONTHS.map(m =>
+    `<div class="month-cell" style="width:${m.days * PPD}px">${m.label}</div>`
+  ).join('');
+
+  // Week row
+  const weeks = Math.ceil(TOTAL_DAYS / 7);
+  document.getElementById('week-row').innerHTML =
+    Array.from({length: weeks}, (_, i) =>
+      `<div class="week-cell" style="width:${7 * PPD}px">${PPD >= 14 ? 'S' + (i + 19) : ''}</div>`
+    ).join('') +
+    (todayX >= 0 && todayX <= totalW
+      ? `<div id="today-head" style="left:${todayX}px"><span id="today-lbl">azi</span></div>` : '');
+
+  // Footer right
+  document.getElementById('footer-right').style.width = totalW + 'px';
+
+  // Rows
+  const container = document.getElementById('rows-container');
+  container.innerHTML = rows.map((row, i) => {
+    const x = tx(row.start), w = tw(row.start, row.end);
+    const isOvlp = row.isProject && overlaps.has(row.id);
+    const st = STATUSES[row.status] || STATUSES.none;
+    const bg = i % 2 === 0 ? 'even' : 'odd';
+    const barVisible = x < totalW && x + w > 0;
+    const barOpacity = row.status === 'cancelled' ? 0.35 : 0.82;
+    const barOutline = isOvlp ? '2px solid var(--red)' : 'none';
+    const topPct = 42 * 0.18, hPct = 42 * 0.64;
+
+    const gridLines = MONTHS.map(m =>
+      `<div class="grid-line" style="left:${m.off * PPD}px"></div>`
+    ).join('');
+    const todayLine = todayX >= 0 && todayX <= totalW
+      ? `<div class="today-line" style="left:${todayX}px"></div>` : '';
+    const bar = barVisible ? `
+      <div class="bar"
+        style="left:${Math.max(0,x)}px;width:${w}px;top:${topPct}px;height:${hPct}px;
+          background:${row.color};border-radius:${row.isProject ? 5 : 4}px;
+          opacity:${barOpacity};outline:${barOutline}"
+        ondblclick="openModal('${row.id}','${row.isProject ? '' : row.projectId}')"
+        title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start, row.end)} zile">
+        ${row.progress > 0 ? `<div class="bar-progress" style="width:${row.progress}%"></div>` : ''}
+        ${w > 60 ? `<span class="bar-label">${row.name}</span>` : ''}
+      </div>` : '';
+
+    const leftClass = `left-cell${row.depth === 1 ? ' depth1' : ''}`;
+    const dotClass = `color-dot${row.isProject ? ' project' : ''}`;
+    const nameClass = `row-name ${row.isProject ? 'project' : 'task'}`;
+    const toggle = row.isProject
+      ? `<button class="toggle-btn" onclick="toggleCollapse('${row.id}')">${row.collapsed ? '▶' : '▼'}</button>`
+      : `<span style="width:14px;flex-shrink:0"></span>`;
+    const addBtn = row.isProject
+      ? `<button class="add-task-btn" onclick="addTask('${row.id}')" title="Adaugă task">+</button>` : '';
+
+    return `<div class="gantt-row ${bg}">
+      <div class="${leftClass}" style="background:${i%2===0?'var(--bg1)':'var(--bg2)'}">
+        ${toggle}
+        <div class="${dotClass}" style="background:${row.color}"></div>
+        <span class="${nameClass}">${isOvlp ? '<span style="color:var(--red);margin-right:4px">⚠</span>' : ''}${row.name}</span>
+        <span class="status-icon" style="color:${st.color}">${st.icon}</span>
+        ${addBtn}
+      </div>
+      <div class="timeline-cell" style="width:${totalW}px">
+        ${gridLines}${todayLine}${bar}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Interactions ── */
+function zoom(delta) {
+  PPD = clamp(PPD + delta, 8, 50);
+  render();
+}
+
+function toggleCollapse(projId) {
+  const p = projects.find(x => x.id === projId);
+  if (p) { p.collapsed = !p.collapsed; render(); }
+}
+
+function addProject() {
+  const t = todayStr();
+  projects.push({id:uid(),name:'Proiect nou',color:PALETTE[projects.length % PALETTE.length],
+    collapsed:false,start:t,end:addD(t,30),status:'none',progress:0,tasks:[]});
+  render();
+}
+
+function addTask(projId) {
+  const p = projects.find(x => x.id === projId);
+  if (!p) return;
+  p.collapsed = false;
+  p.tasks.push({id:uid(),name:'Task nou',color:TCOLORS[p.tasks.length % TCOLORS.length],
+    start:todayStr(),end:addD(todayStr(),14),status:'none',progress:0});
+  render();
+}
+
+/* ── Modal ── */
+let modalRow = null;
+
+function openModal(itemId, projectId) {
+  let row = null;
+  if (!projectId) {
+    row = projects.find(p => p.id === itemId);
+    if (row) row = { ...row, isProject: true };
+  } else {
+    const p = projects.find(x => x.id === projectId);
+    if (p) {
+      const t = p.tasks.find(x => x.id === itemId);
+      if (t) row = { ...t, isProject: false, projectId };
+    }
+  }
+  if (!row) return;
+  modalRow = row;
+
+  document.getElementById('m-title-lbl').textContent = row.isProject ? 'Editare proiect' : 'Editare task';
+  document.getElementById('m-name').value = row.name;
+  document.getElementById('m-start').value = row.start;
+  document.getElementById('m-end').value = row.end;
+  document.getElementById('m-progress').value = row.progress;
+
+  syncModal();
+
+  // Swatches
+  document.getElementById('m-colors').innerHTML = PALETTE.map(c =>
+    `<div class="swatch${c === row.color ? ' active' : ''}" style="background:${c}" onclick="pickColor('${c}')"></div>`
+  ).join('');
+
+  // Status buttons
+  document.getElementById('m-statuses').innerHTML = Object.entries(STATUSES).map(([k, v]) =>
+    `<button class="status-btn${row.status === k ? ' active' : ''}" style="color:${row.status===k?v.color:'var(--t2)'};border-color:${row.status===k?v.color:'var(--bd)'}"
+      onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
+  ).join('');
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function syncModal() {
+  const name = document.getElementById('m-name').value;
+  const start = document.getElementById('m-start').value;
+  const end = document.getElementById('m-end').value;
+  const progress = +document.getElementById('m-progress').value;
+  const days = start && end ? Math.max(0, diff(start, end)) : 0;
+
+  document.getElementById('m-days').textContent = days + ' zile';
+  document.getElementById('m-prog-lbl').textContent = `Progres — ${progress}%`;
+  document.getElementById('m-prog-fill').style.width = progress + '%';
+
+  // Update color dot with current selected color
+  const activeSwatch = document.querySelector('.swatch.active');
+  if (activeSwatch) document.getElementById('m-color-dot').style.background = activeSwatch.style.background;
+}
+
+function pickColor(color) {
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.style.background === color || s.style.backgroundColor === color));
+  document.getElementById('m-color-dot').style.background = color;
+  if (modalRow) modalRow.color = color;
+}
+
+function pickStatus(key) {
+  if (!modalRow) return;
+  modalRow.status = key;
+  document.querySelectorAll('.status-btn').forEach(b => {
+    const k = b.textContent.trim().includes(STATUSES[key].label) && b.textContent.trim().includes(STATUSES[key].icon);
+    b.className = 'status-btn';
+  });
+  // Re-render status buttons
+  const v = STATUSES[key];
+  document.getElementById('m-statuses').innerHTML = Object.entries(STATUSES).map(([k, sv]) =>
+    `<button class="status-btn${k===key?' active':''}" style="color:${k===key?sv.color:'var(--t2)'};border-color:${k===key?sv.color:'var(--bd)'}"
+      onclick="pickStatus('${k}')">${sv.icon} ${sv.label}</button>`
+  ).join('');
+}
+
+function saveItem() {
+  if (!modalRow) return;
+  const name = document.getElementById('m-name').value.trim() || 'Fără nume';
+  const start = document.getElementById('m-start').value;
+  const end = document.getElementById('m-end').value;
+  const progress = +document.getElementById('m-progress').value;
+  const activeSwatch = document.querySelector('.swatch.active');
+  const color = activeSwatch ? (activeSwatch.style.backgroundColor || activeSwatch.style.background) : modalRow.color;
+
+  if (modalRow.isProject) {
+    const p = projects.find(x => x.id === modalRow.id);
+    if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color });
+  } else {
+    const p = projects.find(x => x.id === modalRow.projectId);
+    if (p) {
+      const t = p.tasks.find(x => x.id === modalRow.id);
+      if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color });
+    }
+  }
+  hideModal();
+  render();
+}
+
+function deleteItem() {
+  if (!modalRow) return;
+  if (modalRow.isProject) {
+    projects = projects.filter(p => p.id !== modalRow.id);
+  } else {
+    const p = projects.find(x => x.id === modalRow.projectId);
+    if (p) p.tasks = p.tasks.filter(t => t.id !== modalRow.id);
+  }
+  hideModal();
+  render();
+}
+
+function hideModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  modalRow = null;
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById('modal-overlay')) hideModal();
+}
+
+/* ── Init ── */
+render();
+</script>
+</body>
+</html>
