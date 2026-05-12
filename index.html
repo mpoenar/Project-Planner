@@ -251,21 +251,34 @@ const CONFIG = {
 /* ── MSAL ── */
 let msalInstance, currentAccount, cachedSiteId, cachedListId, listItemId;
 
+const SCOPES = ['https://graph.microsoft.com/Sites.ReadWrite.All'];
+
 async function initMsal() {
-  const config = {
+  msalInstance = new msal.PublicClientApplication({
     auth: {
       clientId: CONFIG.clientId,
       authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`,
       redirectUri: window.location.origin + window.location.pathname,
+      navigateToLoginRequestUrl: false,
     },
-    cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
-  };
-  msalInstance = new msal.PublicClientApplication(config);
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true },
+  });
+
+  // Handle redirect response first
+  try {
+    const result = await msalInstance.handleRedirectPromise();
+    if (result) {
+      currentAccount = result.account;
+    }
+  } catch (e) { console.error('Redirect error:', e); }
 
   // Check existing session
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length > 0) {
-    currentAccount = accounts[0];
+  if (!currentAccount) {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) currentAccount = accounts[0];
+  }
+
+  if (currentAccount) {
     document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('user-name').textContent = currentAccount.name?.split(' ')[0] || '';
     showLoading(true);
@@ -274,41 +287,23 @@ async function initMsal() {
   }
 }
 
-async function login() {
-  try {
-    document.getElementById('login-error').style.display = 'none';
-    const result = await msalInstance.loginPopup({
-      scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All'],
-    });
-    currentAccount = result.account;
-    document.getElementById('login-overlay').style.display = 'none';
-    document.getElementById('user-name').textContent = currentAccount.name?.split(' ')[0] || '';
-    showLoading(true);
-    await loadData();
-    showLoading(false);
-  } catch (e) {
-    document.getElementById('login-error').style.display = 'block';
-  }
+function login() {
+  document.getElementById('login-error').style.display = 'none';
+  msalInstance.loginRedirect({ scopes: SCOPES });
 }
 
 function logout() {
-  if (confirm('Deconectare?')) msalInstance.logoutPopup();
+  if (confirm('Deconectare?')) msalInstance.logoutRedirect();
 }
 
 async function getToken() {
   if (!currentAccount) return null;
   try {
-    const r = await msalInstance.acquireTokenSilent({
-      scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All'],
-      account: currentAccount,
-    });
+    const r = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: currentAccount });
     return r.accessToken;
   } catch {
     try {
-      const r = await msalInstance.acquireTokenPopup({
-        scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All'],
-      });
-      return r.accessToken;
+      msalInstance.acquireTokenRedirect({ scopes: SCOPES });
     } catch { return null; }
   }
 }
