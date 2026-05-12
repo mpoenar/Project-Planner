@@ -330,22 +330,13 @@ async function getSiteId() {
 
 async function getOrCreateList(siteId) {
   if (cachedListId) return cachedListId;
-
-  // Search for existing list
   const lists = await graph('GET', `/sites/${siteId}/lists?$filter=displayName eq '${CONFIG.listName}'&$select=id`);
   if (lists?.value?.length > 0) {
     cachedListId = lists.value[0].id;
     return cachedListId;
   }
-
-  // Create list
-  const newList = await graph('POST', `/sites/${siteId}/lists`, {
-    displayName: CONFIG.listName,
-    columns: [{ name: 'JsonData', text: { allowMultipleLines: true, linesForEditing: 20 } }],
-    list: { template: 'genericList' },
-  });
-  cachedListId = newList?.id;
-  return cachedListId;
+  setStatus('error', 'Lista lipsă — creează "ProjectPlannerData" în SharePoint');
+  return null;
 }
 
 /* ── Data load / save ── */
