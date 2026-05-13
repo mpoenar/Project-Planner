@@ -155,7 +155,8 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <input id="search" placeholder="Caută proiect…" oninput="render()">
   <div class="spacer"></div>
   <button id="btn-overlaps" onclick="toggleOverlaps()">⚠ Suprapuneri</button>
-  <button id="btn-tt-sync" onclick="syncTT()" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .15s">⏱ Sync TrackingTime</button>
+  <button id="btn-tt-sync" onclick="syncTT(false)" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .15s">⏱ Sync TT</button>
+  <button id="btn-tt-alltime" onclick="syncTT(true)" style="height:28px;padding:0 10px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t3);font-size:11px;cursor:pointer;transition:all .15s" title="Sincronizeaza tot istoricul (mai lent)">⏱ All Time</button>
   <span id="tt-last-sync" style="font-size:10px;color:var(--t3)"></span>
   <span class="zoom-lbl">Zoom</span>
   <button class="zbtn" onclick="zoom(-3)">−</button>
@@ -731,14 +732,17 @@ function fmtHours(h) {
   return `${hrs}h ${mins}min`;
 }
 
-async function syncTT() {
+async function syncTT(allTime = false) {
   const btn = document.getElementById('btn-tt-sync');
+  const btnAll = document.getElementById('btn-tt-alltime');
   const syncEl = document.getElementById('tt-last-sync');
-  btn.textContent = '⏱ Se sincronizează...';
-  btn.style.color = 'var(--blue)';
-  btn.disabled = true;
+  const activeBtn = allTime ? btnAll : btn;
+  activeBtn.textContent = '⏱ Se sincronizează...';
+  activeBtn.style.color = 'var(--blue)';
+  btn.disabled = true; btnAll.disabled = true;
   try {
-    const resp = await fetch(`${TT_PROXY}/hours`);
+    const url = allTime ? `${TT_PROXY}/hours/alltime` : `${TT_PROXY}/hours`;
+    const resp = await fetch(url);
     const data = await resp.json();
     ttHours = {};
     ttProjectList = [];
@@ -748,22 +752,23 @@ async function syncTT() {
     }
     ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
     const count = Object.keys(ttHours).length;
-    btn.textContent = `⏱ TT (${count})`;
-    btn.style.color = 'var(--green)';
-    btn.style.borderColor = 'var(--green)';
-    // Timestamp ultima sincronizare
+    btn.textContent = `⏱ Sync TT`;
+    btnAll.textContent = `⏱ All Time`;
+    btn.style.color = 'var(--green)'; btn.style.borderColor = 'var(--green)';
+    btnAll.style.color = allTime ? 'var(--green)' : 'var(--t3)';
     const now = new Date();
     const ts = `${now.toLocaleDateString('ro-RO')} ${now.toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'})}`;
+    const label = allTime ? `All time sync: ${ts}` : `Sync: ${ts}`;
     localStorage.setItem('tt_last_sync', ts);
-    localStorage.setItem('tt_hours_cache', JSON.stringify({hours: data.projects, ts}));
-    syncEl.textContent = `Sync: ${ts}`;
+    localStorage.setItem('tt_hours_cache', JSON.stringify({hours: data.projects, ts, allTime}));
+    syncEl.textContent = `${label} (${count} proiecte)`;
     render();
   } catch(e) {
-    btn.textContent = '⏱ Eroare sync';
-    btn.style.color = 'var(--red)';
-    syncEl.textContent = '';
+    activeBtn.textContent = allTime ? '⏱ All Time' : '⏱ Sync TT';
+    activeBtn.style.color = 'var(--red)';
+    syncEl.textContent = 'Eroare sync';
   }
-  btn.disabled = false;
+  btn.disabled = false; btnAll.disabled = false;
 }
 
 function getTTHours(projectName, ttLink) {
