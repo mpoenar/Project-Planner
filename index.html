@@ -156,6 +156,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <div class="spacer"></div>
   <button id="btn-overlaps" onclick="toggleOverlaps()">⚠ Suprapuneri</button>
   <button id="btn-tt-sync" onclick="syncTT()" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .15s">⏱ Sync TrackingTime</button>
+  <span id="tt-last-sync" style="font-size:10px;color:var(--t3)"></span>
   <span class="zoom-lbl">Zoom</span>
   <button class="zbtn" onclick="zoom(-3)">−</button>
   <span id="zoom-val">22px/zi</span>
@@ -732,6 +733,7 @@ function fmtHours(h) {
 
 async function syncTT() {
   const btn = document.getElementById('btn-tt-sync');
+  const syncEl = document.getElementById('tt-last-sync');
   btn.textContent = '⏱ Se sincronizează...';
   btn.style.color = 'var(--blue)';
   btn.disabled = true;
@@ -749,10 +751,17 @@ async function syncTT() {
     btn.textContent = `⏱ TT (${count})`;
     btn.style.color = 'var(--green)';
     btn.style.borderColor = 'var(--green)';
+    // Timestamp ultima sincronizare
+    const now = new Date();
+    const ts = `${now.toLocaleDateString('ro-RO')} ${now.toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'})}`;
+    localStorage.setItem('tt_last_sync', ts);
+    localStorage.setItem('tt_hours_cache', JSON.stringify({hours: data.projects, ts}));
+    syncEl.textContent = `Sync: ${ts}`;
     render();
   } catch(e) {
     btn.textContent = '⏱ Eroare sync';
     btn.style.color = 'var(--red)';
+    syncEl.textContent = '';
   }
   btn.disabled = false;
 }
@@ -780,4 +789,26 @@ function getTTHours(projectName, ttLink) {
 /* ── Init ── */
 render();
 initMsal().catch(console.error);
+
+// Restaureaza orele TT din cache la incarcare
+(function() {
+  try {
+    const cached = JSON.parse(localStorage.getItem('tt_hours_cache') || '{}');
+    if (cached.hours && cached.ts) {
+      ttHours = {};
+      ttProjectList = [];
+      for (const [name, hours] of Object.entries(cached.hours)) {
+        ttHours[name.toLowerCase()] = hours;
+        ttProjectList.push({ name: name.toLowerCase(), displayName: name, hours });
+      }
+      ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      const count = Object.keys(ttHours).length;
+      const btn = document.getElementById('btn-tt-sync');
+      const syncEl = document.getElementById('tt-last-sync');
+      if (btn) { btn.textContent = `⏱ TT (${count})`; btn.style.color = 'var(--green)'; btn.style.borderColor = 'var(--green)'; }
+      if (syncEl) syncEl.textContent = `Sync: ${cached.ts}`;
+      render();
+    }
+  } catch(e) {}
+})();
 </script>
