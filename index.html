@@ -117,11 +117,6 @@ input{font-family:inherit}
 .btn-cancel{padding:8px 16px;border-radius:var(--r);border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px}
 .btn-save{padding:8px 18px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700}
 input[type=range]{width:100%;accent-color:var(--blue)}
-#btn-tt{height:28px;padding:0 10px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;transition:all .15s;cursor:pointer}
-#btn-tt.connected{color:#e8401c;border-color:#e8401c;background:#fff5f3}
-#tt-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1001;align-items:center;justify-content:center}
-#tt-modal-overlay.open{display:flex}
-.tt-hours{font-size:10px;color:#e8401c;font-weight:700;margin-left:4px;white-space:nowrap;flex-shrink:0}
 
 /* Loading screen */
 #loading-screen{position:fixed;inset:0;background:var(--bg0);display:none;align-items:center;justify-content:center;z-index:1500;flex-direction:column;gap:12px}
@@ -160,7 +155,6 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <input id="search" placeholder="Caută proiect…" oninput="render()">
   <div class="spacer"></div>
   <button id="btn-overlaps" onclick="toggleOverlaps()">⚠ Suprapuneri</button>
-  <button id="btn-tt" onclick="openTTModal()">⏱ TrackingTime</button>
   <span class="zoom-lbl">Zoom</span>
   <button class="zbtn" onclick="zoom(-3)">−</button>
   <span id="zoom-val">22px/zi</span>
@@ -225,13 +219,6 @@ input[type=range]{width:100%;accent-color:var(--blue)}
         <label class="field-label">Data final</label>
         <input type="date" class="field-input" id="m-end" onchange="syncModal()">
       </div>
-    </div>
-    <div class="field-group" id="m-tt-group" style="display:none">
-      <label class="field-label">🕐 TrackingTime Project</label>
-      <select class="field-input" id="m-tt-link" style="cursor:pointer">
-        <option value="">— Neselectat —</option>
-      </select>
-      <div id="m-tt-hours" style="font-size:11px;color:#e8401c;margin-top:4px;display:none"></div>
     </div>
     <div class="field-group">
       <label class="field-label">Status</label>
@@ -565,9 +552,6 @@ function render() {
     const cellBg = i % 2 === 0 ? 'var(--bg1)' : 'var(--bg2)';
     const barVisible = x < totalW && x + w > 0;
 
-    const ttH = (row.isProject && Object.keys(ttHours).length) ? getTTHours(row.name, row.ttLink) : null;
-    const ttLabel = ttH !== null ? ` · ⏱ ${fmtHours(ttH)}` : '';
-
     const gridLines = MONTHS.map(m => `<div class="grid-line" style="left:${m.off * PPD}px"></div>`).join('');
     const todayLine = todayX >= 0 && todayX <= totalW ? `<div class="today-line" style="left:${todayX}px"></div>` : '';
     const bar = barVisible ? `
@@ -575,9 +559,9 @@ function render() {
         background:${row.color};border-radius:${row.isProject?5:4}px;
         opacity:${row.status==='cancelled'?.35:.82};outline:${isOvlp?'2px solid var(--red)':'none'}"
         ondblclick="openModal('${row.id}','${row.isProject?'':row.projectId}')"
-        title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start,row.end)} zile${ttLabel}">
+        title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start,row.end)} zile">
         ${row.progress > 0 ? `<div class="bar-progress" style="width:${row.progress}%"></div>` : ''}
-        ${w > 60 ? `<span class="bar-label">${row.name}${ttLabel}</span>` : ''}
+        ${w > 60 ? `<span class="bar-label">${row.name}</span>` : ''}
       </div>` : '';
 
     const toggle = row.isProject
@@ -594,7 +578,7 @@ function render() {
         <div class="color-dot${row.isProject?' project':''}" style="background:${row.color}"></div>
         <span class="row-name ${row.isProject?'project':'task'}">${isOvlp?'<span style="color:var(--red);margin-right:4px">⚠</span>':''}${row.name}</span>
         <span class="status-icon" style="color:${st.color}">${st.icon}</span>
-        ${(() => { if (!row.isProject || !Object.keys(ttHours).length) return ''; const h = getTTHours(row.name, row.ttLink); return h !== null ? `<span class="tt-hours">⏱ ${fmtHours(h)}</span>` : ''; })()}
+
         ${addBtn}
       </div>
       <div class="timeline-cell" style="width:${totalW}px">${gridLines}${todayLine}${bar}</div>
@@ -666,27 +650,6 @@ function openModal(itemId, projectId) {
   ).join('');
 
   // TT dropdown — only for projects
-  const ttGroup = document.getElementById('m-tt-group');
-  const ttSelect = document.getElementById('m-tt-link');
-  const ttHoursEl = document.getElementById('m-tt-hours');
-  if (row.isProject && ttProjectList.length > 0) {
-    ttGroup.style.display = '';
-    ttSelect.innerHTML = '<option value="">— Neselectat —</option>' +
-      ttProjectList.map(p => `<option value="${p.name}" ${row.ttLink===p.name?'selected':''}>${p.displayName} (⏱ ${fmtHours(p.hours)})</option>`).join('');
-    const h = row.ttLink ? ttHours[row.ttLink] : null;
-    if (h !== null && h !== undefined) {
-      ttHoursEl.textContent = `⏱ ${fmtHours(h)} pontate în TrackingTime`;
-      ttHoursEl.style.display = '';
-    } else { ttHoursEl.style.display = 'none'; }
-    ttSelect.onchange = () => {
-      const h2 = ttSelect.value ? ttHours[ttSelect.value] : null;
-      ttHoursEl.textContent = h2 !== null && h2 !== undefined ? `⏱ ${fmtHours(h2)} pontate în TrackingTime` : '';
-      ttHoursEl.style.display = h2 !== null && h2 !== undefined ? '' : 'none';
-    };
-  } else {
-    ttGroup.style.display = 'none';
-  }
-
   syncModal();
   document.getElementById('modal-overlay').classList.add('open');
 }
@@ -732,9 +695,8 @@ function saveItem() {
   }
 
   if (modalRow.isProject) {
-    const ttLink = document.getElementById('m-tt-link')?.value || '';
     const p = projects.find(x => x.id === modalRow.id);
-    if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color, ttLink });
+    if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color });
   } else {
     const p = projects.find(x => x.id === modalRow.projectId);
     if (p) { const t = p.tasks.find(x => x.id === modalRow.id); if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color }); }
@@ -750,176 +712,12 @@ function deleteItem() {
 function hideModal() { document.getElementById('modal-overlay').classList.remove('open'); modalRow = null; }
 function closeModal(e) { if (e.target === document.getElementById('modal-overlay')) hideModal(); }
 
-/* ── TrackingTime CSV Import ── */
 let ttHours = {};
 let ttProjectList = [];
-
-function openTTModal() {
-  const stored = localStorage.getItem('tt_csv_data');
-  document.getElementById('tt-csv').value = stored || '';
-  document.getElementById('tt-error').style.display = 'none';
-  document.getElementById('tt-status').style.display = 'none';
-  document.getElementById('tt-modal-overlay').style.display = 'flex';
-}
-
-function closeTTModal(e) {
-  if (e.target === document.getElementById('tt-modal-overlay'))
-    document.getElementById('tt-modal-overlay').style.display = 'none';
-}
-
-function clearTT() {
-  localStorage.removeItem('tt_csv_data');
-  ttHours = {}; ttProjectList = [];
-  document.getElementById('tt-csv').value = '';
-  document.getElementById('btn-tt').classList.remove('connected');
-  document.getElementById('btn-tt').textContent = '⏱ TrackingTime';
-  document.getElementById('tt-modal-overlay').style.display = 'none';
-  render();
-}
-
-function importCSV() {
-  const csv = document.getElementById('tt-csv').value.trim();
-  const errEl = document.getElementById('tt-error');
-  const statEl = document.getElementById('tt-status');
-  errEl.style.display = 'none';
-
-  if (!csv) { errEl.textContent = 'Lipește conținutul CSV înainte de import.'; errEl.style.display = 'block'; return; }
-
-  // Parse CSV — flexible: handles various TT export formats
-  const lines = csv.split('\n').map(l => l.trim()).filter(Boolean);
-  if (lines.length < 2) { errEl.textContent = 'CSV invalid — trebuie cel puțin un header și un rând de date.'; errEl.style.display = 'block'; return; }
-
-  const header = lines[0].toLowerCase().split(',').map(h => h.replace(/"/g,'').trim());
-  const projCol = header.findIndex(h => h.includes('project') || h.includes('proiect') || h.includes('task'));
-  const hoursCol = header.findIndex(h => h.includes('hour') || h.includes('ore') || h.includes('duration') || h.includes('time') || h.includes('total'));
-
-  if (projCol === -1) { errEl.textContent = 'Nu găsesc coloana cu proiectul. Asigură-te că CSV-ul are o coloană "Project" sau "Task".'; errEl.style.display = 'block'; return; }
-  if (hoursCol === -1) { errEl.textContent = 'Nu găsesc coloana cu orele. Asigură-te că CSV-ul are o coloană "Hours", "Duration" sau "Total".'; errEl.style.display = 'block'; return; }
-
-  const hoursMap = {};
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.replace(/"/g,'').trim());
-    const proj = cols[projCol] || '';
-    const rawH = cols[hoursCol] || '0';
-    if (!proj) continue;
-
-    // Parse hours: accepts "42.5", "42:30" (HH:MM), "42h 30min"
-    let hours = 0;
-    if (rawH.includes(':')) {
-      const [h, m] = rawH.split(':').map(Number);
-      hours = h + (m || 0) / 60;
-    } else {
-      hours = parseFloat(rawH.replace(/[^0-9.]/g,'')) || 0;
-    }
-    hoursMap[proj] = (hoursMap[proj] || 0) + hours;
-  }
-
-  ttHours = {};
-  ttProjectList = [];
-  for (const [name, hours] of Object.entries(hoursMap)) {
-    const key = name.toLowerCase().trim();
-    ttHours[key] = Math.round(hours * 10) / 10;
-    ttProjectList.push({ name: key, displayName: name, hours: Math.round(hours * 10) / 10 });
-  }
-  ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
-
-  localStorage.setItem('tt_csv_data', csv);
-  const count = ttProjectList.length;
-  statEl.textContent = `✓ ${count} proiecte importate din CSV`;
-  statEl.style.display = 'block';
-  document.getElementById('btn-tt').classList.add('connected');
-  document.getElementById('btn-tt').textContent = `⏱ TT (${count})`;
-  setTimeout(() => { document.getElementById('tt-modal-overlay').style.display = 'none'; }, 1200);
-  render();
-}
-
-function getTTHours(projectName, ttLink) {
-  if (ttLink && ttHours[ttLink] !== undefined) return ttHours[ttLink];
-  if (!projectName || !Object.keys(ttHours).length) return null;
-  const name = projectName.toLowerCase();
-  if (ttHours[name] !== undefined) return ttHours[name];
-  for (const [k, v] of Object.entries(ttHours)) {
-    if (name.includes(k) || k.includes(name) || name.split(/[_\s]+/).some(part => part.length > 3 && k.includes(part.toLowerCase()))) return v;
-  }
-  return null;
-}
-
-function fmtHours(h) {
-  if (h === null || h === undefined) return '';
-  if (h === 0) return '0h';
-  const hrs = Math.floor(h);
-  const mins = Math.round((h - hrs) * 60);
-  if (hrs === 0) return `${mins}min`;
-  if (mins === 0) return `${hrs}h`;
-  return `${hrs}h ${mins}min`;
-}
-
-// Restore from localStorage on load
-(function() {
-  const stored = localStorage.getItem('tt_csv_data');
-  if (stored) {
-    document.getElementById('tt-csv') && (document.getElementById('tt-csv').value = stored);
-    // Re-parse silently
-    setTimeout(() => {
-      const csv = stored.trim();
-      const lines = csv.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) return;
-      const header = lines[0].toLowerCase().split(',').map(h => h.replace(/"/g,'').trim());
-      const projCol = header.findIndex(h => h.includes('project') || h.includes('task'));
-      const hoursCol = header.findIndex(h => h.includes('hour') || h.includes('duration') || h.includes('time') || h.includes('total'));
-      if (projCol === -1 || hoursCol === -1) return;
-      const hoursMap = {};
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map(c => c.replace(/"/g,'').trim());
-        const proj = cols[projCol] || ''; const rawH = cols[hoursCol] || '0';
-        if (!proj) continue;
-        let hours = rawH.includes(':') ? (() => { const [h,m] = rawH.split(':').map(Number); return h + (m||0)/60; })() : parseFloat(rawH.replace(/[^0-9.]/g,''))||0;
-        hoursMap[proj] = (hoursMap[proj] || 0) + hours;
-      }
-      ttHours = {}; ttProjectList = [];
-      for (const [name, hours] of Object.entries(hoursMap)) {
-        const key = name.toLowerCase().trim();
-        ttHours[key] = Math.round(hours * 10) / 10;
-        ttProjectList.push({ name: key, displayName: name, hours: Math.round(hours * 10) / 10 });
-      }
-      ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
-      const count = ttProjectList.length;
-      if (count > 0) {
-        document.getElementById('btn-tt').classList.add('connected');
-        document.getElementById('btn-tt').textContent = `⏱ TT (${count})`;
-        render();
-      }
-    }, 500);
-  }
-})();
+function getTTHours(){return null;}
+function fmtHours(h){if(!h)return'';const hrs=Math.floor(h);const mins=Math.round((h-hrs)*60);if(hrs===0)return mins+'min';if(mins===0)return hrs+'h';return hrs+'h '+mins+'min';}
 
 /* ── Init ── */
 render();
 initMsal().catch(console.error);
 </script>
-
-<!-- ── TrackingTime Modal ── -->
-<div id="tt-modal-overlay" onclick="closeTTModal(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1001;align-items:center;justify-content:center">
-  <div onclick="event.stopPropagation()" style="background:var(--bg1);border:1px solid var(--bd);border-radius:var(--rlg);padding:28px;width:440px;max-width:95vw;box-shadow:0 10px 40px rgba(0,0,0,.2)">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
-      <span style="font-size:20px">⏱</span>
-      <span style="font-weight:700;font-size:15px;flex:1">Import ore din TrackingTime</span>
-      <button onclick="document.getElementById('tt-modal-overlay').style.display='none'" style="background:none;border:none;font-size:18px;color:var(--t3);cursor:pointer">×</button>
-    </div>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.6;background:var(--bg2);padding:10px;border-radius:var(--r)">
-      <strong>Cum exportezi din TrackingTime:</strong><br>
-      Reports → Time Report → selectezi perioada → <strong>Export → CSV</strong><br>
-      Apoi deschizi fișierul CSV și copiezi conținutul jos.
-    </div>
-    <div class="field-group">
-      <label class="field-label">Lipește conținutul CSV aici</label>
-      <textarea id="tt-csv" style="width:100%;height:140px;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:8px;color:var(--t1);font-size:11px;font-family:monospace;resize:vertical;outline:none" placeholder="Project,Hours&#10;Tasks Casino65,42.5&#10;Tasks Hamburg,28.3&#10;..."></textarea>
-    </div>
-    <div id="tt-error" style="font-size:12px;color:var(--red);margin-bottom:8px;display:none"></div>
-    <div id="tt-status" style="font-size:12px;color:var(--green);margin-bottom:8px;display:none"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-      <button onclick="clearTT()" style="padding:8px 14px;border-radius:var(--r);border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">Resetează</button>
-      <button onclick="importCSV()" style="padding:8px 18px;border-radius:var(--r);border:none;background:#e8401c;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Importă orele</button>
-    </div>
-  </div>
-</div>
