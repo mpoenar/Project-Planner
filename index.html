@@ -763,9 +763,11 @@ function getTTHours(projectName, ttLink) {
   const name = projectName.toLowerCase();
   if (ttHours[name] !== undefined) return ttHours[name];
   for (const [k, v] of Object.entries(ttHours)) {
-    const parts = name.split(/[\s_\-]+/);
-    if (parts.some(p => p.length > 3 && k.includes(p))) return v;
-    if (k.split(/[\s_\-]+/).some(p => p.length > 3 && name.includes(p))) return v;
+    // Potrivire partiala case-insensitive
+    const nameParts = name.split(/[\s_\-]+/).filter(p => p.length > 2);
+    const kParts = k.split(/[\s_\-]+/).filter(p => p.length > 2);
+    if (nameParts.some(p => k.includes(p))) return v;
+    if (kParts.some(p => name.includes(p))) return v;
   }
   return null;
 }
