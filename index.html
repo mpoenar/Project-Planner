@@ -762,12 +762,17 @@ function getTTHours(projectName, ttLink) {
   if (!projectName || !Object.keys(ttHours).length) return null;
   const name = projectName.toLowerCase();
   if (ttHours[name] !== undefined) return ttHours[name];
+
   for (const [k, v] of Object.entries(ttHours)) {
-    // Potrivire partiala case-insensitive
-    const nameParts = name.split(/[\s_\-]+/).filter(p => p.length > 2);
-    const kParts = k.split(/[\s_\-]+/).filter(p => p.length > 2);
-    if (nameParts.some(p => k.includes(p))) return v;
-    if (kParts.some(p => name.includes(p))) return v;
+    // Scoate "tasks " din fata si foloseste restul ca keyword
+    // ex: "tasks hamburg" -> "hamburg", "tasks hkl_hanseatischer hof lübeck" -> "hkl hanseatischer hof lübeck"
+    const keyword = k.replace(/^tasks?\s+/i, '').trim();
+    if (!keyword) continue;
+    // Cauta keyword-ul in numele din Gantt
+    if (name.includes(keyword)) return v;
+    // Sau verifica daca primul cuvant din keyword apare in Gantt (pt. cazuri cu nume lungi)
+    const firstWord = keyword.split(/[\s_\-]+/)[0];
+    if (firstWord.length > 2 && name.includes(firstWord)) return v;
   }
   return null;
 }
