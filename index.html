@@ -81,10 +81,26 @@ input{font-family:inherit}
 .today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--red);opacity:.6;pointer-events:none;z-index:4}
 .today-head-line{position:absolute;top:0;bottom:0;width:2px;background:var(--red);z-index:5}
 .today-lbl{position:absolute;top:0;left:4px;font-size:9px;color:var(--red);white-space:nowrap}
-.bar{position:absolute;display:flex;align-items:center;overflow:hidden;cursor:pointer;transition:opacity .15s}
+
+/* Bar & drag */
+.bar{position:absolute;display:flex;align-items:center;overflow:visible;cursor:grab;transition:opacity .15s;user-select:none}
 .bar:hover{opacity:.95!important}
+.bar.is-dragging{cursor:grabbing;opacity:.9!important;box-shadow:0 4px 16px rgba(0,0,0,.22);z-index:20}
+.bar-inner{position:absolute;inset:0;overflow:hidden;border-radius:inherit}
 .bar-progress{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.25);border-right:1px solid rgba(255,255,255,.35)}
-.bar-label{position:relative;z-index:1;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.95);padding-left:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-label{position:relative;z-index:1;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.95);padding-left:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none}
+/* Resize handles */
+.bar-rh{position:absolute;top:0;bottom:0;width:7px;z-index:5;cursor:ew-resize;display:flex;align-items:center;justify-content:center}
+.bar-rh.left{left:-1px;cursor:w-resize;border-radius:inherit 0 0 inherit}
+.bar-rh.right{right:-1px;cursor:e-resize;border-radius:0 inherit inherit 0}
+.bar-rh::after{content:'';width:2px;height:60%;background:rgba(255,255,255,.55);border-radius:1px;display:block}
+.bar-rh:hover::after{background:rgba(255,255,255,.9)}
+/* Drag tooltip */
+#drag-tooltip{position:fixed;background:rgba(0,0,0,.75);color:#fff;font-size:11px;padding:4px 8px;border-radius:5px;pointer-events:none;z-index:9999;display:none;white-space:nowrap}
+/* Global dragging state */
+body.is-dragging{cursor:grabbing!important;user-select:none}
+body.is-resizing{cursor:ew-resize!important;user-select:none}
+
 #gantt-footer{display:flex;height:44px;flex-shrink:0}
 .footer-left{width:290px;flex-shrink:0;position:sticky;left:0;z-index:10;background:var(--bg1);border-right:1px solid var(--bd);display:flex;align-items:center;justify-content:center;border-top:1px solid var(--bd)}
 .footer-left button{background:none;border:none;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer}
@@ -127,6 +143,9 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 </head>
 <body>
 
+<!-- Drag tooltip -->
+<div id="drag-tooltip"></div>
+
 <!-- ── Login overlay ── -->
 <div id="login-overlay">
   <div id="login-box">
@@ -155,9 +174,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <input id="search" placeholder="Caută proiect…" oninput="render()">
   <div class="spacer"></div>
   <button id="btn-overlaps" onclick="toggleOverlaps()">⚠ Suprapuneri</button>
-  <button id="btn-tt-sync" onclick="syncTT(true)" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .15s">⏱ Sync TT</button>
-  <button id="btn-tt-alltime" onclick="syncTT(false)" style="height:28px;padding:0 10px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t3);font-size:11px;cursor:pointer;transition:all .15s" title="Sincronizeaza doar ultimele 12 luni (rapid)">⏱ 12 luni</button>
-  <span id="tt-last-sync" style="font-size:10px;color:var(--t3)"></span>
+  <button id="btn-tt-sync" onclick="syncTT()" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .15s">⏱ Sync TrackingTime</button>
   <span class="zoom-lbl">Zoom</span>
   <button class="zbtn" onclick="zoom(-3)">−</button>
   <span id="zoom-val">22px/zi</span>
@@ -175,7 +192,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <button class="filter-btn" data-status="problem" onclick="setFilter('problem')" style="color:var(--red)">! Problem</button>
   <button class="filter-btn" data-status="cancelled" onclick="setFilter('cancelled')" style="color:var(--t3)">✕ Cancelled</button>
   <button class="filter-btn" data-status="completed" onclick="setFilter('completed')" style="color:var(--green)">✓ Completed</button>
-  <span class="hint">Dublu-click pe bară pentru editare</span>
+  <span class="hint">Drag pentru mutare · Marginile pentru resize · Dublu-click pentru editare</span>
 </div>
 
 <!-- ── Gantt ── -->
@@ -244,7 +261,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 
 <script>
 /* ════════════════════════════════════════════
-   CONFIGURARE — completează după înregistrare
+   CONFIGURARE
    ════════════════════════════════════════════ */
 const CONFIG = {
   clientId:  '09e90cfd-f525-4a76-a8de-59a3348cb3c5',
@@ -253,11 +270,9 @@ const CONFIG = {
   sitePath:  '/sites/Coordonareproiecte',
   listName:  'ProjectPlannerData',
 };
-/* ════════════════════════════════════════════ */
 
 /* ── MSAL ── */
 let msalInstance, currentAccount, cachedSiteId, cachedListId, listItemId;
-
 const SCOPES = ['https://graph.microsoft.com/Sites.ReadWrite.All'];
 
 async function initMsal() {
@@ -270,21 +285,14 @@ async function initMsal() {
     },
     cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true },
   });
-
-  // Handle redirect response first
   try {
     const result = await msalInstance.handleRedirectPromise();
-    if (result) {
-      currentAccount = result.account;
-    }
+    if (result) currentAccount = result.account;
   } catch (e) { console.error('Redirect error:', e); }
-
-  // Check existing session
   if (!currentAccount) {
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) currentAccount = accounts[0];
   }
-
   if (currentAccount) {
     document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('user-name').textContent = currentAccount.name?.split(' ')[0] || '';
@@ -298,20 +306,16 @@ function login() {
   document.getElementById('login-error').style.display = 'none';
   msalInstance.loginRedirect({ scopes: SCOPES });
 }
-
 function logout() {
   if (confirm('Deconectare?')) msalInstance.logoutRedirect();
 }
-
 async function getToken() {
   if (!currentAccount) return null;
   try {
     const r = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: currentAccount });
     return r.accessToken;
   } catch {
-    try {
-      msalInstance.acquireTokenRedirect({ scopes: SCOPES });
-    } catch { return null; }
+    try { msalInstance.acquireTokenRedirect({ scopes: SCOPES }); } catch { return null; }
   }
 }
 
@@ -327,21 +331,16 @@ async function graph(method, path, body) {
   if (res.status === 204) return {};
   return res.ok ? res.json() : null;
 }
-
 async function getSiteId() {
   if (cachedSiteId) return cachedSiteId;
   const data = await graph('GET', `/sites/${CONFIG.siteHost}:${CONFIG.sitePath}`);
   cachedSiteId = data?.id;
   return cachedSiteId;
 }
-
 async function getOrCreateList(siteId) {
   if (cachedListId) return cachedListId;
   const lists = await graph('GET', `/sites/${siteId}/lists?$filter=displayName eq '${CONFIG.listName}'&$select=id`);
-  if (lists?.value?.length > 0) {
-    cachedListId = lists.value[0].id;
-    return cachedListId;
-  }
+  if (lists?.value?.length > 0) { cachedListId = lists.value[0].id; return cachedListId; }
   setStatus('error', 'Lista lipsă — creează "ProjectPlannerData" în SharePoint');
   return null;
 }
@@ -351,10 +350,8 @@ async function loadData() {
   try {
     const siteId = await getSiteId();
     if (!siteId) { setStatus('error', 'Eroare site'); return; }
-
     const listId = await getOrCreateList(siteId);
     if (!listId) { setStatus('error', 'Eroare listă'); return; }
-
     const items = await graph('GET', `/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=5&$select=id,fields`);
     if (items?.value?.length > 0) {
       const item = items.value[0];
@@ -378,13 +375,11 @@ function queueSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(doSave, 1200);
 }
-
 async function doSave() {
   try {
     const siteId = await getSiteId();
     const listId = await getOrCreateList(siteId);
     const json = JSON.stringify(projects);
-
     if (listItemId) {
       await graph('PATCH', `/sites/${siteId}/lists/${listId}/items/${listItemId}/fields`, { JsonData: json });
     } else {
@@ -398,7 +393,6 @@ async function doSave() {
     setStatus('error', 'Eroare salvare');
   }
 }
-
 function setStatus(type, text) {
   const icon = document.getElementById('save-icon');
   const lbl = document.getElementById('save-text');
@@ -408,7 +402,6 @@ function setStatus(type, text) {
   lbl.textContent = text;
   document.getElementById('save-status').style.color = colors[type] || 'var(--t3)';
 }
-
 function showLoading(v) {
   document.getElementById('loading-screen').classList.toggle('visible', v);
 }
@@ -432,7 +425,6 @@ const TCOLORS = ['#5dcaa5','#85b7eb','#97c459','#afa9ec','#ef9f27','#1d9e75','#d
 
 let _id = 1, activeFilter = 'all';
 const uid = () => 'r' + (_id++);
-
 const STATUS_COLORS = { all:'var(--t1)', 'in-progress':'var(--green)', delayed:'var(--orange)', 'at-risk':'#b45309', problem:'var(--red)', cancelled:'var(--t3)', completed:'var(--green)' };
 
 function setFilter(status) {
@@ -446,11 +438,16 @@ function setFilter(status) {
   });
   render();
 }
+
 function d2ms(s) { return new Date(s + 'T00:00:00').getTime(); }
 function diff(a, b) { return Math.round((d2ms(b) - d2ms(a)) / 86400000); }
 function addD(s, n) { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0]; }
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function fmtDate(s) {
+  const d = new Date(s + 'T00:00:00');
+  return d.toLocaleDateString('ro-RO', { day:'2-digit', month:'short' });
+}
 
 /* ── Default projects ── */
 let projects = [
@@ -491,7 +488,6 @@ function getMonths(totalDays) {
   return out;
 }
 
-
 function flatRows(search) {
   const q = search.toLowerCase();
   const rows = [];
@@ -520,7 +516,19 @@ function getOverlaps() {
   return s;
 }
 
+/* ── Find row data by id ── */
+function findRow(id, pid) {
+  if (!pid) return { row: projects.find(p => p.id === id), isProject: true };
+  const p = projects.find(p => p.id === pid);
+  return { row: p?.tasks.find(t => t.id === id), isProject: false, project: p };
+}
+
 /* ── Render ── */
+let _rafPending = false;
+function renderRAF() {
+  if (!_rafPending) { _rafPending = true; requestAnimationFrame(() => { render(); _rafPending = false; }); }
+}
+
 function render() {
   const search = document.getElementById('search').value;
   const rows = flatRows(search);
@@ -560,14 +568,23 @@ function render() {
 
     const gridLines = MONTHS.map(m => `<div class="grid-line" style="left:${m.off * PPD}px"></div>`).join('');
     const todayLine = todayX >= 0 && todayX <= totalW ? `<div class="today-line" style="left:${todayX}px"></div>` : '';
+
+    const pid = row.isProject ? '' : (row.projectId || '');
     const bar = barVisible ? `
-      <div class="bar" style="left:${Math.max(0,x)}px;width:${w}px;top:${42*.18}px;height:${42*.64}px;
-        background:${row.color};border-radius:${row.isProject?5:4}px;
-        opacity:${row.status==='cancelled'?.35:.82};outline:${isOvlp?'2px solid var(--red)':'none'}"
-        ondblclick="openModal('${row.id}','${row.isProject?'':row.projectId}')"
+      <div class="bar"
+        data-bar-id="${row.id}"
+        data-bar-pid="${pid}"
+        style="left:${Math.max(0,x)}px;width:${w}px;top:${42*.18}px;height:${42*.64}px;
+          background:${row.color};border-radius:${row.isProject?5:4}px;
+          opacity:${row.status==='cancelled'?.35:.82};outline:${isOvlp?'2px solid var(--red)':'none'}"
+        ondblclick="handleBarDblClick(event,'${row.id}','${pid}')"
         title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start,row.end)} zile${ttLabel}">
-        ${row.progress > 0 ? `<div class="bar-progress" style="width:${row.progress}%"></div>` : ''}
-        ${w > 60 ? `<span class="bar-label">${row.name}${ttLabel}</span>` : ''}
+        <div class="bar-rh left" data-rh="left" data-bar-id="${row.id}" data-bar-pid="${pid}"></div>
+        <div class="bar-inner">
+          ${row.progress > 0 ? `<div class="bar-progress" style="width:${row.progress}%"></div>` : ''}
+          ${w > 60 ? `<span class="bar-label">${row.name}${ttLabel}</span>` : ''}
+        </div>
+        <div class="bar-rh right" data-rh="right" data-bar-id="${row.id}" data-bar-pid="${pid}"></div>
       </div>` : '';
 
     const toggle = row.isProject
@@ -584,12 +601,136 @@ function render() {
         <div class="color-dot${row.isProject?' project':''}" style="background:${row.color}"></div>
         <span class="row-name ${row.isProject?'project':'task'}">${isOvlp?'<span style="color:var(--red);margin-right:4px">⚠</span>':''}${row.name}</span>
         <span class="status-icon" style="color:${st.color}">${st.icon}</span>
-
         ${addBtn}
       </div>
       <div class="timeline-cell" style="width:${totalW}px">${gridLines}${todayLine}${bar}</div>
     </div>`;
   }).join('');
+}
+
+/* ── Drag & Resize Logic ── */
+let dragState = null;
+const tooltip = document.getElementById('drag-tooltip');
+
+function showTooltip(x, y, text) {
+  tooltip.style.display = 'block';
+  tooltip.style.left = (x + 14) + 'px';
+  tooltip.style.top = (y - 28) + 'px';
+  tooltip.textContent = text;
+}
+function hideTooltip() { tooltip.style.display = 'none'; }
+
+document.addEventListener('mousedown', e => {
+  // Resize handle
+  const rh = e.target.closest('[data-rh]');
+  if (rh) {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = rh.dataset.barId;
+    const pid = rh.dataset.barPid;
+    const { row } = findRow(id, pid);
+    if (!row) return;
+    dragState = {
+      mode: 'resize',
+      side: rh.dataset.rh,  // 'left' or 'right'
+      id, pid,
+      startX: e.clientX,
+      origStart: row.start,
+      origEnd: row.end,
+    };
+    document.body.classList.add('is-resizing');
+    return;
+  }
+
+  // Bar drag (move)
+  const bar = e.target.closest('.bar');
+  if (bar && !e.target.closest('[data-rh]')) {
+    e.preventDefault();
+    const id = bar.dataset.barId;
+    const pid = bar.dataset.barPid;
+    const { row } = findRow(id, pid);
+    if (!row) return;
+    dragState = {
+      mode: 'move',
+      id, pid,
+      startX: e.clientX,
+      origStart: row.start,
+      origEnd: row.end,
+      moved: false,
+    };
+    // Don't add class yet — wait for actual movement to avoid cursor flash on click
+    return;
+  }
+});
+
+document.addEventListener('mousemove', e => {
+  if (!dragState) return;
+
+  const deltaX = e.clientX - dragState.startX;
+  const deltaDays = Math.round(deltaX / PPD);
+
+  // Only start visual drag after moving 4px
+  if (dragState.mode === 'move' && Math.abs(deltaX) > 4 && !dragState.moved) {
+    dragState.moved = true;
+    document.body.classList.add('is-dragging');
+    const barEl = document.querySelector(`.bar[data-bar-id="${dragState.id}"]`);
+    if (barEl) barEl.classList.add('is-dragging');
+  }
+
+  if (dragState.mode === 'move' && !dragState.moved) return;
+
+  const { row } = findRow(dragState.id, dragState.pid);
+  if (!row) return;
+
+  let newStart = row.start, newEnd = row.end;
+
+  if (dragState.mode === 'move') {
+    newStart = addD(dragState.origStart, deltaDays);
+    newEnd   = addD(dragState.origEnd,   deltaDays);
+  } else if (dragState.mode === 'resize' && dragState.side === 'left') {
+    newStart = addD(dragState.origStart, deltaDays);
+    if (d2ms(newStart) >= d2ms(dragState.origEnd) - 86400000) newStart = addD(dragState.origEnd, -1);
+  } else if (dragState.mode === 'resize' && dragState.side === 'right') {
+    newEnd = addD(dragState.origEnd, deltaDays);
+    if (d2ms(newEnd) <= d2ms(dragState.origStart) + 86400000) newEnd = addD(dragState.origStart, 1);
+  }
+
+  if (newStart !== row.start || newEnd !== row.end) {
+    row.start = newStart;
+    row.end   = newEnd;
+    renderRAF();
+  }
+
+  // Tooltip
+  const dur = diff(newStart, newEnd);
+  if (dragState.mode === 'move') {
+    showTooltip(e.clientX, e.clientY, `${fmtDate(newStart)} → ${fmtDate(newEnd)} (${dur}z)`);
+  } else if (dragState.side === 'left') {
+    showTooltip(e.clientX, e.clientY, `Start: ${fmtDate(newStart)} (${dur}z)`);
+  } else {
+    showTooltip(e.clientX, e.clientY, `Final: ${fmtDate(newEnd)} (${dur}z)`);
+  }
+});
+
+document.addEventListener('mouseup', e => {
+  if (!dragState) return;
+  const wasRealDrag = dragState.mode === 'resize' || dragState.moved;
+  document.body.classList.remove('is-dragging', 'is-resizing');
+  const barEl = document.querySelector(`.bar[data-bar-id="${dragState.id}"]`);
+  if (barEl) barEl.classList.remove('is-dragging');
+  hideTooltip();
+  if (wasRealDrag) {
+    render();
+    queueSave();
+  }
+  dragState = null;
+});
+
+// Prevent dblclick from opening modal when it was a drag
+function handleBarDblClick(e, id, pid) {
+  if (dragState && dragState.moved) return;
+  // If mouse barely moved during the interaction, treat as dblclick
+  openModal(id, pid);
 }
 
 /* ── Actions ── */
@@ -611,7 +752,6 @@ function uniqueName(name, excludeId) {
   while (projects.some(p => p.id !== excludeId && p.name === base + ' (' + n + ')')) n++;
   return base + ' (' + n + ')';
 }
-
 function addProject() {
   const t = todayStr();
   const name = uniqueName('Proiect nou', null);
@@ -654,8 +794,6 @@ function openModal(itemId, projectId) {
       style="color:${v.color};border-color:${row.status===k?v.color:'var(--bd)'};background:${row.status===k?'var(--bg2)':'transparent'}"
       onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
-
-  // TT dropdown — only for projects
   syncModal();
   document.getElementById('modal-overlay').classList.add('open');
 }
@@ -690,8 +828,6 @@ function saveItem() {
   const progress = +document.getElementById('m-progress').value;
   const as = document.querySelector('.swatch.active');
   const color = as ? (as.style.backgroundColor || as.style.background) : modalRow.color;
-
-  // Auto-rename if duplicate
   if (modalRow.isProject) {
     const newName = uniqueName(name, modalRow.id);
     if (newName !== name) {
@@ -699,7 +835,6 @@ function saveItem() {
       name = newName;
     }
   }
-
   if (modalRow.isProject) {
     const p = projects.find(x => x.id === modalRow.id);
     if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color });
@@ -732,17 +867,13 @@ function fmtHours(h) {
   return `${hrs}h ${mins}min`;
 }
 
-async function syncTT(allTime = false) {
+async function syncTT() {
   const btn = document.getElementById('btn-tt-sync');
-  const btnAll = document.getElementById('btn-tt-alltime');
-  const syncEl = document.getElementById('tt-last-sync');
-  const activeBtn = allTime ? btnAll : btn;
-  activeBtn.textContent = '⏱ Se sincronizează...';
-  activeBtn.style.color = 'var(--blue)';
-  btn.disabled = true; btnAll.disabled = true;
+  btn.textContent = '⏱ Se sincronizează...';
+  btn.style.color = 'var(--blue)';
+  btn.disabled = true;
   try {
-    const url = allTime ? `${TT_PROXY}/hours/alltime` : `${TT_PROXY}/hours`;
-    const resp = await fetch(url);
+    const resp = await fetch(`${TT_PROXY}/hours`);
     const data = await resp.json();
     ttHours = {};
     ttProjectList = [];
@@ -752,23 +883,15 @@ async function syncTT(allTime = false) {
     }
     ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
     const count = Object.keys(ttHours).length;
-    btn.textContent = `⏱ Sync TT`;
-    btnAll.textContent = `⏱ All Time`;
-    btn.style.color = 'var(--green)'; btn.style.borderColor = 'var(--green)';
-    btnAll.style.color = allTime ? 'var(--green)' : 'var(--t3)';
-    const now = new Date();
-    const ts = `${now.toLocaleDateString('ro-RO')} ${now.toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'})}`;
-    const label = allTime ? `All time sync: ${ts}` : `Sync: ${ts}`;
-    localStorage.setItem('tt_last_sync', ts);
-    localStorage.setItem('tt_hours_cache', JSON.stringify({hours: data.projects, ts, allTime}));
-    syncEl.textContent = `${label} (${count} proiecte)`;
+    btn.textContent = `⏱ TT (${count})`;
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
     render();
   } catch(e) {
-    activeBtn.textContent = allTime ? '⏱ All Time' : '⏱ Sync TT';
-    activeBtn.style.color = 'var(--red)';
-    syncEl.textContent = 'Eroare sync';
+    btn.textContent = '⏱ Eroare sync';
+    btn.style.color = 'var(--red)';
   }
-  btn.disabled = false; btnAll.disabled = false;
+  btn.disabled = false;
 }
 
 function getTTHours(projectName, ttLink) {
@@ -776,17 +899,10 @@ function getTTHours(projectName, ttLink) {
   if (!projectName || !Object.keys(ttHours).length) return null;
   const name = projectName.toLowerCase();
   if (ttHours[name] !== undefined) return ttHours[name];
-
   for (const [k, v] of Object.entries(ttHours)) {
-    // Scoate "tasks" din fata (cu sau fara spatiu) si foloseste restul ca keyword
-    // ex: "tasks hamburg" -> "hamburg", "tasks140-dh" -> "140-dh"
-    const keyword = k.replace(/^tasks?\s*/i, '').trim();
-    if (!keyword) continue;
-    // Cauta keyword-ul in numele din Gantt
-    if (name.includes(keyword)) return v;
-    // Sau verifica daca primul cuvant din keyword apare in Gantt (pt. cazuri cu nume lungi)
-    const firstWord = keyword.split(/[\s_\-]+/)[0];
-    if (firstWord.length > 2 && name.includes(firstWord)) return v;
+    const parts = name.split(/[\s_\-]+/);
+    if (parts.some(p => p.length > 3 && k.includes(p))) return v;
+    if (k.split(/[\s_\-]+/).some(p => p.length > 3 && name.includes(p))) return v;
   }
   return null;
 }
@@ -794,26 +910,4 @@ function getTTHours(projectName, ttLink) {
 /* ── Init ── */
 render();
 initMsal().catch(console.error);
-
-// Restaureaza orele TT din cache la incarcare
-(function() {
-  try {
-    const cached = JSON.parse(localStorage.getItem('tt_hours_cache') || '{}');
-    if (cached.hours && cached.ts) {
-      ttHours = {};
-      ttProjectList = [];
-      for (const [name, hours] of Object.entries(cached.hours)) {
-        ttHours[name.toLowerCase()] = hours;
-        ttProjectList.push({ name: name.toLowerCase(), displayName: name, hours });
-      }
-      ttProjectList.sort((a, b) => a.displayName.localeCompare(b.displayName));
-      const count = Object.keys(ttHours).length;
-      const btn = document.getElementById('btn-tt-sync');
-      const syncEl = document.getElementById('tt-last-sync');
-      if (btn) { btn.textContent = `⏱ TT (${count})`; btn.style.color = 'var(--green)'; btn.style.borderColor = 'var(--green)'; }
-      if (syncEl) syncEl.textContent = `Sync: ${cached.ts}`;
-      render();
-    }
-  } catch(e) {}
-})();
 </script>
