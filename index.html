@@ -734,7 +734,7 @@ function render() {
           background:${row.color};border-radius:${row.isProject?5:4}px;
           opacity:${row.status==='cancelled'?.35:.82};outline:${isOvlp?'2px solid var(--red)':'none'}"
         ondblclick="handleBarDblClick(event,'${row.id}','${pid}')"
-        title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start,row.end)} zile${ttLabel}">
+        title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start,row.end)} zile${ttLabel}${effectiveProgress > 0 ? ` · ${effectiveProgress}% progres` : ''}">
         <div class="bar-rh left"  data-rh="left"  data-bar-id="${row.id}" data-bar-pid="${pid}"></div>
         <div class="bar-inner">
           ${effectiveProgress > 0 ? `<div class="bar-progress" style="width:${effectiveProgress}%"></div>` : ''}
