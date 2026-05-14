@@ -89,7 +89,7 @@ input{font-family:inherit}
 /* bar-inner clips the label and progress bar */
 .bar-inner{position:absolute;inset:0;overflow:hidden;border-radius:inherit;pointer-events:none}
 .bar-progress{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.25);border-right:1px solid rgba(255,255,255,.35)}
-.bar-label{position:relative;z-index:1;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.95);padding-left:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-label{position:relative;z-index:1;font-size:12px;font-weight:700;color:#fff;padding-left:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.45)}
 /* resize handles */
 .bar-rh{position:absolute;top:0;bottom:0;width:7px;z-index:5;display:flex;align-items:center;justify-content:center}
 .bar-rh.left{left:-1px;cursor:w-resize}
@@ -897,10 +897,15 @@ function syncModal() {
       allocInfo.textContent = `${fmtHours(ttH)} lucrate din ${allocH}h alocate`;
       allocInfo.style.color = autoPct >= 100 ? 'var(--red)' : 'var(--green)';
     } else {
-      // Progres manual
+      // Revenire la progres manual
+      if (progSlider.disabled) {
+        // era in modul auto → resetam la 0 la stergerea orelor alocate
+        progSlider.value = 0;
+      }
       progSlider.disabled  = false;
-      progLbl.textContent  = `Progres — ${progress}%`;
-      progFill.style.width = progress + '%';
+      const manualPct = +progSlider.value;
+      progLbl.textContent  = `Progres — ${manualPct}%`;
+      progFill.style.width = manualPct + '%';
       allocInfo.textContent = allocH > 0 ? 'Sincronizează TT pentru calcul automat' : '';
       allocInfo.style.color = 'var(--t3)';
     }
