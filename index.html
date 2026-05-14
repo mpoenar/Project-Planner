@@ -140,7 +140,13 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 .tt-link-row select:focus{border-color:var(--blue)}
 .tt-link-badge{font-size:11px;color:var(--green);white-space:nowrap;font-weight:700}
 
-/* Loading screen */
+/* Hover tooltip custom */
+#hover-tooltip{position:fixed;background:var(--bg1);border:1px solid var(--bd2);border-radius:var(--rlg);padding:14px 18px;pointer-events:none;z-index:9998;display:none;min-width:220px;max-width:320px;box-shadow:0 6px 24px rgba(0,0,0,.14)}
+.ht-name{font-size:13.5px;font-weight:700;color:var(--t1);margin-bottom:10px;line-height:1.3;word-break:break-word}
+.ht-row{font-size:12.5px;color:var(--t2);margin-bottom:6px;display:flex;align-items:center;gap:8px;line-height:1.3}
+.ht-row:last-child{margin-bottom:0}
+.ht-icon{font-size:13px;width:16px;flex-shrink:0;text-align:center}
+.ht-val{color:var(--t1);font-weight:600}
 #loading-screen{position:fixed;inset:0;background:var(--bg0);display:none;align-items:center;justify-content:center;z-index:1500;flex-direction:column;gap:12px}
 #loading-screen.visible{display:flex}
 .spinner{width:32px;height:32px;border:3px solid var(--bd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
@@ -151,6 +157,15 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 
 <!-- drag tooltip (NEW) -->
 <div id="drag-tooltip"></div>
+
+<!-- hover tooltip custom -->
+<div id="hover-tooltip">
+  <div class="ht-name" id="ht-name"></div>
+  <div class="ht-row"><span class="ht-icon">📅</span><span id="ht-dates" class="ht-val"></span></div>
+  <div class="ht-row"><span class="ht-icon">⏳</span><span id="ht-days" class="ht-val"></span></div>
+  <div class="ht-row" id="ht-tt-row" style="display:none"><span class="ht-icon">⏱</span><span id="ht-tt" class="ht-val"></span></div>
+  <div class="ht-row" id="ht-prog-row" style="display:none"><span class="ht-icon">▰</span><span id="ht-prog" class="ht-val"></span></div>
+</div>
 
 <!-- ── Login overlay ── -->
 <div id="login-overlay">
@@ -733,8 +748,7 @@ function render() {
         style="left:${Math.max(0,x)}px;width:${w}px;top:${42*.18}px;height:${42*.64}px;
           background:${row.color};border-radius:${row.isProject?5:4}px;
           opacity:${row.status==='cancelled'?.35:.82};outline:${isOvlp?'2px solid var(--red)':'none'}"
-        ondblclick="handleBarDblClick(event,'${row.id}','${pid}')"
-        title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start,row.end)} zile${ttLabel}${effectiveProgress > 0 ? ` · ${effectiveProgress}% progres` : ''}">
+        ondblclick="handleBarDblClick(event,'${row.id}','${pid}')">
         <div class="bar-rh left"  data-rh="left"  data-bar-id="${row.id}" data-bar-pid="${pid}"></div>
         <div class="bar-inner">
           ${effectiveProgress > 0 ? `<div class="bar-progress" style="width:${effectiveProgress}%"></div>` : ''}
@@ -1099,6 +1113,7 @@ document.addEventListener('mousedown', e => {
     if (!row) return;
     dragState = { mode:'resize', side:rh.dataset.rh, id, pid, startX:e.clientX, origStart:row.start, origEnd:row.end };
     document.body.classList.add('is-resizing');
+    document.getElementById('hover-tooltip').style.display = 'none';
     return;
   }
   // ── bar move ──
@@ -1182,7 +1197,78 @@ function updateBarLabels() {
 }
 document.getElementById('gantt').addEventListener('scroll', updateBarLabels, { passive: true });
 
-/* ── Init ── */
+/* ── Hover tooltip (custom, stilizat) ── */
+(function() {
+  const ht      = document.getElementById('hover-tooltip');
+  const htName  = document.getElementById('ht-name');
+  const htDates = document.getElementById('ht-dates');
+  const htDays  = document.getElementById('ht-days');
+  const htTTRow = document.getElementById('ht-tt-row');
+  const htTT    = document.getElementById('ht-tt');
+  const htProgRow = document.getElementById('ht-prog-row');
+  const htProg  = document.getElementById('ht-prog');
+  const rc      = document.getElementById('rows-container');
+
+  function positionTip(e) {
+    const pad = 16;
+    let x = e.clientX + 14, y = e.clientY + 14;
+    if (x + ht.offsetWidth  > window.innerWidth  - pad) x = e.clientX - ht.offsetWidth  - 10;
+    if (y + ht.offsetHeight > window.innerHeight - pad) y = e.clientY - ht.offsetHeight - 10;
+    ht.style.left = x + 'px';
+    ht.style.top  = y + 'px';
+  }
+
+  rc.addEventListener('mouseover', e => {
+    if (dragState) return;
+    const bar = e.target.closest('.bar');
+    if (!bar) return;
+
+    const id  = bar.dataset.barId;
+    const pid = bar.dataset.barPid;
+    const row = _findRow(id, pid);
+    if (!row) return;
+
+    // calculeaza tt si progres efectiv (identic cu render)
+    const isProject = !pid;
+    const ttH = isProject ? getTTHours(row.name, row.ttLink) : null;
+    let effProg = row.progress || 0;
+    if (isProject && (row.allocatedHours || 0) > 0 && ttH > 0)
+      effProg = Math.min(100, Math.round((ttH / row.allocatedHours) * 100));
+
+    htName.textContent  = row.name;
+    htDates.textContent = `${row.start} → ${row.end}`;
+    htDays.textContent  = `${diff(row.start, row.end)} zile`;
+
+    if (ttH && ttH > 0) {
+      htTT.textContent       = fmtHours(ttH);
+      htTTRow.style.display  = 'flex';
+    } else {
+      htTTRow.style.display  = 'none';
+    }
+
+    if (effProg > 0) {
+      htProg.textContent      = effProg + '% progres'
+        + (isProject && row.allocatedHours > 0 ? ` din ${row.allocatedHours}h alocate` : '');
+      htProgRow.style.display = 'flex';
+    } else {
+      htProgRow.style.display = 'none';
+    }
+
+    ht.style.display = 'block';
+    positionTip(e);
+  });
+
+  rc.addEventListener('mousemove', e => {
+    if (ht.style.display === 'none') return;
+    if (!e.target.closest('.bar')) { ht.style.display = 'none'; return; }
+    positionTip(e);
+  });
+
+  rc.addEventListener('mouseout', e => {
+    if (!e.relatedTarget || !e.relatedTarget.closest?.('.bar'))
+      ht.style.display = 'none';
+  });
+})();
 
 // Scroll la data de azi — apelat o singura data la incarcare
 function scrollToToday() {
