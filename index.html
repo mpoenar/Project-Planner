@@ -252,12 +252,20 @@ input[type=range]{width:100%;accent-color:var(--blue)}
       <label class="field-label">Status</label>
       <div class="status-buttons" id="m-statuses"></div>
     </div>
+    <div class="field-group" id="m-alloc-group" style="display:none">
+      <label class="field-label">Ore alocate în proiect</label>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input type="number" class="field-input" id="m-alloc-hours" min="0" step="1"
+          placeholder="ex: 200" style="width:130px;flex-shrink:0" oninput="syncModal()">
+        <span id="m-alloc-info" style="font-size:11px;color:var(--t2);line-height:1.4"></span>
+      </div>
+    </div>
     <div class="field-group">
       <label class="field-label" id="m-prog-lbl">Progres — 0%</label>
       <div class="progress-bar-bg"><div class="progress-bar-fill" id="m-prog-fill"></div></div>
       <input type="range" min="0" max="100" id="m-progress" oninput="syncModal()">
     </div>
-    <!-- TT link — shown only for projects, hidden for tasks -->
+    <!-- Ore alocate + TT link — doar pentru proiecte -->
     <div class="field-group" id="m-tt-group" style="display:none">
       <label class="field-label">Legătură TrackingTime</label>
       <div class="tt-link-row">
@@ -708,6 +716,12 @@ function render() {
     const ttH = row.isProject ? getTTHours(row.name, row.ttLink) : null;
     const ttLabel = ttH ? ` · ⏱ ${fmtHours(ttH)}` : '';
 
+    // Progres efectiv: auto din ore alocate+TT, altfel manual
+    let effectiveProgress = row.progress;
+    if (row.isProject && (row.allocatedHours || 0) > 0 && ttH > 0) {
+      effectiveProgress = Math.min(100, Math.round((ttH / row.allocatedHours) * 100));
+    }
+
     const gridLines = MONTHS.map(m => `<div class="grid-line" style="left:${m.off * PPD}px"></div>`).join('');
     const todayLine = todayX >= 0 && todayX <= totalW ? `<div class="today-line" style="left:${todayX}px"></div>` : '';
 
@@ -723,7 +737,7 @@ function render() {
         title="${row.name} · ${row.start} → ${row.end} · ${diff(row.start,row.end)} zile${ttLabel}">
         <div class="bar-rh left"  data-rh="left"  data-bar-id="${row.id}" data-bar-pid="${pid}"></div>
         <div class="bar-inner">
-          ${row.progress > 0 ? `<div class="bar-progress" style="width:${row.progress}%"></div>` : ''}
+          ${effectiveProgress > 0 ? `<div class="bar-progress" style="width:${effectiveProgress}%"></div>` : ''}
           ${w > 60 ? `<span class="bar-label">${row.name}${ttLabel}</span>` : ''}
         </div>
         <div class="bar-rh right" data-rh="right" data-bar-id="${row.id}" data-bar-pid="${pid}"></div>
@@ -816,45 +830,84 @@ function openModal(itemId, projectId) {
       onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
 
-  // TT link dropdown — only for projects
-  const ttGroup = document.getElementById('m-tt-group');
-  const ttSel   = document.getElementById('m-tt-link');
+  // Ore alocate + TT link — doar pentru proiecte
+  const ttGroup   = document.getElementById('m-tt-group');
+  const allocGroup = document.getElementById('m-alloc-group');
+  const ttSel     = document.getElementById('m-tt-link');
   if (row.isProject) {
-    ttGroup.style.display = '';
-    // Rebuild options from current ttProjectList
+    ttGroup.style.display   = '';
+    allocGroup.style.display = '';
+    document.getElementById('m-alloc-hours').value = row.allocatedHours || '';
+    // Rebuild TT options
     ttSel.innerHTML = '<option value="">— auto-detectare —</option>' +
       '<option value="__none__"' + ((row.ttLink||'') === '__none__' ? ' selected' : '') + '>✕ Fără ore TT</option>' +
       ttProjectList.map(p =>
         `<option value="${p.name}"${(row.ttLink||'') === p.name ? ' selected' : ''}>${p.displayName} · ${fmtHours(p.hours)||'0h'}</option>`
       ).join('');
-    // If no TT data loaded yet, show a hint
     if (!ttProjectList.length) {
       ttSel.innerHTML = '<option value="">— sincronizează TT mai întâi —</option>';
     }
   } else {
-    ttGroup.style.display = 'none';
+    ttGroup.style.display   = 'none';
+    allocGroup.style.display = 'none';
   }
   syncModal();
   document.getElementById('modal-overlay').classList.add('open');
 }
 function syncModal() {
-  const start = document.getElementById('m-start').value;
-  const end = document.getElementById('m-end').value;
+  const start    = document.getElementById('m-start').value;
+  const end      = document.getElementById('m-end').value;
   const progress = +document.getElementById('m-progress').value;
   document.getElementById('m-days').textContent = (start&&end?Math.max(0,diff(start,end)):0) + ' zile';
-  document.getElementById('m-prog-lbl').textContent = `Progres — ${progress}%`;
-  document.getElementById('m-prog-fill').style.width = progress + '%';
   const as = document.querySelector('.swatch.active');
   if (as) document.getElementById('m-color-dot').style.background = as.style.background;
-  // TT hours preview
-  const ttSel = document.getElementById('m-tt-link');
+
+  // TT hours preview in dropdown badge
+  const ttSel   = document.getElementById('m-tt-link');
   const ttBadge = document.getElementById('m-tt-hours');
   if (ttSel && ttBadge && modalRow) {
     const chosenKey = ttSel.value;
-    const h = chosenKey
+    const h = chosenKey && chosenKey !== '__none__'
       ? (ttHours[chosenKey] || 0)
       : (modalRow.isProject ? (getTTHours(modalRow.name, '') || 0) : 0);
     ttBadge.textContent = h > 0 ? `⏱ ${fmtHours(h)}` : '';
+  }
+
+  // Auto-progress din ore alocate + TT
+  const allocInput = document.getElementById('m-alloc-hours');
+  const allocInfo  = document.getElementById('m-alloc-info');
+  const progSlider = document.getElementById('m-progress');
+  const progLbl    = document.getElementById('m-prog-lbl');
+  const progFill   = document.getElementById('m-prog-fill');
+
+  if (modalRow && modalRow.isProject && allocInput) {
+    const allocH  = parseFloat(allocInput.value) || 0;
+    const ttKey   = ttSel ? ttSel.value : '';
+    const ttH     = ttKey && ttKey !== '__none__'
+      ? (ttHours[ttKey] || 0)
+      : (getTTHours(modalRow.name, '') || 0);
+
+    if (allocH > 0 && ttH > 0) {
+      // Auto-calcul progres
+      const autoPct = Math.min(100, Math.round((ttH / allocH) * 100));
+      progSlider.value = autoPct;
+      progSlider.disabled = true;
+      progLbl.textContent  = `Progres — ${autoPct}% (auto)`;
+      progFill.style.width = autoPct + '%';
+      allocInfo.textContent = `${fmtHours(ttH)} lucrate din ${allocH}h alocate`;
+      allocInfo.style.color = autoPct >= 100 ? 'var(--red)' : 'var(--green)';
+    } else {
+      // Progres manual
+      progSlider.disabled  = false;
+      progLbl.textContent  = `Progres — ${progress}%`;
+      progFill.style.width = progress + '%';
+      allocInfo.textContent = allocH > 0 ? 'Sincronizează TT pentru calcul automat' : '';
+      allocInfo.style.color = 'var(--t3)';
+    }
+  } else {
+    progSlider.disabled  = false;
+    progLbl.textContent  = `Progres — ${progress}%`;
+    progFill.style.width = progress + '%';
   }
 }
 function pickColor(color) {
@@ -890,8 +943,10 @@ function saveItem() {
 
   if (modalRow.isProject) {
     const p = projects.find(x => x.id === modalRow.id);
-    const ttLinkVal = document.getElementById('m-tt-link')?.value || '';
-    if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color, ttLink: ttLinkVal });
+    const ttLinkVal  = document.getElementById('m-tt-link')?.value || '';
+    const allocHours = parseFloat(document.getElementById('m-alloc-hours')?.value) || 0;
+    const finalProgress = +document.getElementById('m-progress').value; // already updated by syncModal if auto
+    if (p) Object.assign(p, { name, start, end, progress: finalProgress, status: modalRow.status, color, ttLink: ttLinkVal, allocatedHours: allocHours });
   } else {
     const p = projects.find(x => x.id === modalRow.projectId);
     if (p) { const t = p.tasks.find(x => x.id === modalRow.id); if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color }); }
