@@ -134,6 +134,11 @@ body.is-resizing,body.is-resizing *{cursor:ew-resize!important;user-select:none!
 .btn-cancel{padding:8px 16px;border-radius:var(--r);border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px}
 .btn-save{padding:8px 18px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700}
 input[type=range]{width:100%;accent-color:var(--blue)}
+/* TT link row */
+.tt-link-row{display:flex;gap:8px;align-items:center}
+.tt-link-row select{flex:1;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:7px 10px;color:var(--t1);font-size:12px;outline:none;font-family:inherit}
+.tt-link-row select:focus{border-color:var(--blue)}
+.tt-link-badge{font-size:11px;color:var(--green);white-space:nowrap;font-weight:700}
 
 /* Loading screen */
 #loading-screen{position:fixed;inset:0;background:var(--bg0);display:none;align-items:center;justify-content:center;z-index:1500;flex-direction:column;gap:12px}
@@ -251,6 +256,16 @@ input[type=range]{width:100%;accent-color:var(--blue)}
       <label class="field-label" id="m-prog-lbl">Progres — 0%</label>
       <div class="progress-bar-bg"><div class="progress-bar-fill" id="m-prog-fill"></div></div>
       <input type="range" min="0" max="100" id="m-progress" oninput="syncModal()">
+    </div>
+    <!-- TT link — shown only for projects, hidden for tasks -->
+    <div class="field-group" id="m-tt-group" style="display:none">
+      <label class="field-label">Legătură TrackingTime</label>
+      <div class="tt-link-row">
+        <select id="m-tt-link" onchange="syncModal()">
+          <option value="">— auto-detectare —</option>
+        </select>
+        <span class="tt-link-badge" id="m-tt-hours"></span>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn-delete" onclick="deleteItem()">Șterge</button>
@@ -692,7 +707,23 @@ function openModal(itemId, projectId) {
       onclick="pickStatus('${k}')">${v.icon} ${v.label}</button>`
   ).join('');
 
-  // TT dropdown — only for projects
+  // TT link dropdown — only for projects
+  const ttGroup = document.getElementById('m-tt-group');
+  const ttSel   = document.getElementById('m-tt-link');
+  if (row.isProject) {
+    ttGroup.style.display = '';
+    // Rebuild options from current ttProjectList
+    ttSel.innerHTML = '<option value="">— auto-detectare —</option>' +
+      ttProjectList.map(p =>
+        `<option value="${p.name}"${(row.ttLink||'') === p.name ? ' selected' : ''}>${p.displayName} · ${fmtHours(p.hours)||'0h'}</option>`
+      ).join('');
+    // If no TT data loaded yet, show a hint
+    if (!ttProjectList.length) {
+      ttSel.innerHTML = '<option value="">— sincronizează TT mai întâi —</option>';
+    }
+  } else {
+    ttGroup.style.display = 'none';
+  }
   syncModal();
   document.getElementById('modal-overlay').classList.add('open');
 }
@@ -705,6 +736,16 @@ function syncModal() {
   document.getElementById('m-prog-fill').style.width = progress + '%';
   const as = document.querySelector('.swatch.active');
   if (as) document.getElementById('m-color-dot').style.background = as.style.background;
+  // TT hours preview
+  const ttSel = document.getElementById('m-tt-link');
+  const ttBadge = document.getElementById('m-tt-hours');
+  if (ttSel && ttBadge && modalRow) {
+    const chosenKey = ttSel.value;
+    const h = chosenKey
+      ? (ttHours[chosenKey] || 0)
+      : (modalRow.isProject ? (getTTHours(modalRow.name, '') || 0) : 0);
+    ttBadge.textContent = h > 0 ? `⏱ ${fmtHours(h)}` : '';
+  }
 }
 function pickColor(color) {
   document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.style.background===color||s.style.backgroundColor===color));
@@ -739,7 +780,8 @@ function saveItem() {
 
   if (modalRow.isProject) {
     const p = projects.find(x => x.id === modalRow.id);
-    if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color });
+    const ttLinkVal = document.getElementById('m-tt-link')?.value || '';
+    if (p) Object.assign(p, { name, start, end, progress, status: modalRow.status, color, ttLink: ttLinkVal });
   } else {
     const p = projects.find(x => x.id === modalRow.projectId);
     if (p) { const t = p.tasks.find(x => x.id === modalRow.id); if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color }); }
@@ -812,19 +854,28 @@ function getTTHours(projectName, ttLink) {
   if (ttLink && ttHours[ttLink] !== undefined) return ttHours[ttLink];
   if (!projectName || !Object.keys(ttHours).length) return null;
   const name = projectName.toLowerCase();
+
+  // 1. Match exact pe cheie
   if (ttHours[name] !== undefined) return ttHours[name];
 
+  // 2. Prima trecere: keyword complet in numele Gantt
+  //    ex: "haar" din "tasks haar" se regaseste in "2510_09_pls_25_10_haar"
   for (const [k, v] of Object.entries(ttHours)) {
-    // Scoate "tasks" din fata (cu sau fara spatiu) si foloseste restul ca keyword
-    // ex: "tasks hamburg" -> "hamburg", "tasks140-dh" -> "140-dh"
     const keyword = k.replace(/^tasks?\s*/i, '').trim();
     if (!keyword) continue;
-    // Cauta keyword-ul in numele din Gantt
     if (name.includes(keyword)) return v;
-    // Sau verifica daca primul cuvant din keyword apare in Gantt (pt. cazuri cu nume lungi)
-    const firstWord = keyword.split(/[\s_\-]+/)[0];
-    if (firstWord.length > 2 && name.includes(firstWord)) return v;
   }
+
+  // 3. A doua trecere: firstWord fallback — DOAR pentru chei "tasks XXX"
+  //    evita false-positive pe chei gen "2510_09_pls_haar" (firstWord="2510" e prea generic)
+  for (const [k, v] of Object.entries(ttHours)) {
+    if (!/^tasks?\s+/i.test(k)) continue;
+    const keyword = k.replace(/^tasks?\s*/i, '').trim();
+    if (!keyword) continue;
+    const firstWord = keyword.split(/[\s_\-]+/)[0];
+    if (firstWord.length > 3 && name.includes(firstWord)) return v;
+  }
+
   return null;
 }
 
