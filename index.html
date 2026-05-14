@@ -886,8 +886,10 @@ function getTTHours(projectName, ttLink) {
   // 1. Match exact pe cheie
   if (ttHours[name] !== undefined) return ttHours[name];
 
-  // Tokenizeaza numele Gantt (cuvinte cu >= 3 caractere)
-  const nameTokens = name.split(/[\s_\-\.\/]+/).filter(w => w.length >= 3);
+  // Tokenuri pentru scoring principal (>=5 chars — exclude "pls","hdo","str" etc.)
+  const nameL  = name.split(/[\s_\-\.\/]+/).filter(w => w.length >= 5);
+  // Tokenuri pentru firstWord exact match (>=3 chars — permite "hdo","hkl","dh")
+  const nameS  = name.split(/[\s_\-\.\/]+/).filter(w => w.length >= 3);
 
   let bestKey = null, bestScore = -1;
 
@@ -897,27 +899,28 @@ function getTTHours(projectName, ttLink) {
 
     let score = 0;
 
+    // Substring complet (ex: "hkl_hanseatischer hof lübeck" in name)
     if (name.includes(keyword)) {
-      // Substring complet gasit in nume → scor proportional cu lungimea
       score = keyword.length * 2;
     } else {
-      // Scor bazat pe cuvinte comune
-      const kwTokens = keyword.split(/[\s_\-\.\/]+/).filter(w => w.length >= 3);
-      for (const kt of kwTokens) {
-        if (nameTokens.some(nt => nt === kt))            score += 10; // cuvant identic
-        else if (nameTokens.some(nt => nt.includes(kt) || kt.includes(nt))) score += 3;
+      // Scor pe tokeni lungi (>=5): evita "pls","str" ca false match
+      const kwL = keyword.split(/[\s_\-\.\/]+/).filter(w => w.length >= 5);
+      for (const kt of kwL) {
+        if (nameL.some(nt => nt === kt))                           score += 10;
+        else if (nameL.some(nt => nt.includes(kt) || kt.includes(nt))) score += 3;
       }
-      // Bonus firstWord pentru chei "tasks XXX"
+      // Bonus firstWord pe tokeni scurti (>=3) dar DOAR pentru "tasks XXX"
       if (/^tasks?\s+/i.test(k)) {
-        const fw = kwTokens[0];
-        if (fw && fw.length >= 3 && nameTokens.some(nt => nt === fw)) score += 5;
+        const allKw = keyword.split(/[\s_\-\.\/]+/).filter(w => w.length >= 3);
+        const fw = allKw[0];
+        if (fw && nameS.some(nt => nt === fw)) score += 5;
       }
     }
 
     if (score > bestScore) { bestScore = score; bestKey = k; }
   }
 
-  // Prag minim: cel putin 5 puncte (evita false-positive pe 1 cuvant generic)
+  // Prag minim 5: firstWord exact singur (ex: "hdo" → 5) e suficient
   return (bestScore >= 5 && bestKey !== null) ? ttHours[bestKey] : null;
 }
 
