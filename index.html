@@ -155,8 +155,8 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <input id="search" placeholder="Caută proiect…" oninput="render()">
   <div class="spacer"></div>
   <button id="btn-overlaps" onclick="toggleOverlaps()">⚠ Suprapuneri</button>
-  <button id="btn-tt-sync" onclick="syncTT(false)" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .15s">⏱ Sync TT</button>
-  <button id="btn-tt-alltime" onclick="syncTT(true)" style="height:28px;padding:0 10px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t3);font-size:11px;cursor:pointer;transition:all .15s" title="Sincronizeaza tot istoricul (mai lent)">⏱ All Time</button>
+  <button id="btn-tt-sync" onclick="syncTT(true)" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .15s">⏱ Sync TT</button>
+  <button id="btn-tt-alltime" onclick="syncTT(false)" style="height:28px;padding:0 10px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t3);font-size:11px;cursor:pointer;transition:all .15s" title="Sincronizeaza doar ultimele 12 luni (rapid)">⏱ 12 luni</button>
   <span id="tt-last-sync" style="font-size:10px;color:var(--t3)"></span>
   <span class="zoom-lbl">Zoom</span>
   <button class="zbtn" onclick="zoom(-3)">−</button>
@@ -778,9 +778,9 @@ function getTTHours(projectName, ttLink) {
   if (ttHours[name] !== undefined) return ttHours[name];
 
   for (const [k, v] of Object.entries(ttHours)) {
-    // Scoate "tasks " din fata si foloseste restul ca keyword
-    // ex: "tasks hamburg" -> "hamburg", "tasks hkl_hanseatischer hof lübeck" -> "hkl hanseatischer hof lübeck"
-    const keyword = k.replace(/^tasks?\s+/i, '').trim();
+    // Scoate "tasks" din fata (cu sau fara spatiu) si foloseste restul ca keyword
+    // ex: "tasks hamburg" -> "hamburg", "tasks140-dh" -> "140-dh"
+    const keyword = k.replace(/^tasks?\s*/i, '').trim();
     if (!keyword) continue;
     // Cauta keyword-ul in numele din Gantt
     if (name.includes(keyword)) return v;
