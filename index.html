@@ -873,7 +873,7 @@ function getTTHours(projectName, ttLink) {
     const keyword = k.replace(/^tasks?\s*/i, '').trim();
     if (!keyword) continue;
     const firstWord = keyword.split(/[\s_\-]+/)[0];
-    if (firstWord.length > 3 && name.includes(firstWord)) return v;
+    if (firstWord.length > 2 && name.includes(firstWord)) return v;
   }
 
   return null;
