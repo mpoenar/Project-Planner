@@ -664,6 +664,8 @@ function render() {
       <div class="timeline-cell" style="width:${totalW}px">${gridLines}${todayLine}${bar}</div>
     </div>`;
   }).join('');
+  // update label positions after DOM is painted
+  requestAnimationFrame(updateBarLabels);
 }
 
 /* ── Actions ── */
@@ -996,6 +998,23 @@ function handleBarDblClick(e, id, pid) {
   // dragState is already null here (mouseup fired first), so just open modal
   openModal(id, pid);
 }
+
+/* ── Label repositioning on scroll (keeps label in visible portion of bar) ── */
+function updateBarLabels() {
+  const gantt = document.getElementById('gantt');
+  const sl = gantt.scrollLeft;
+  document.querySelectorAll('.bar').forEach(bar => {
+    const label = bar.querySelector('.bar-label');
+    if (!label) return;
+    const bLeft  = parseFloat(bar.style.left)  || 0;
+    const bWidth = parseFloat(bar.style.width) || 0;
+    // how far the visible area has moved into this bar
+    const shift    = Math.max(0, sl - bLeft);
+    const maxShift = Math.max(0, bWidth - 60); // leave room for text
+    label.style.paddingLeft = Math.min(shift + 7, maxShift) + 'px';
+  });
+}
+document.getElementById('gantt').addEventListener('scroll', updateBarLabels, { passive: true });
 
 /* ── Init ── */
 
