@@ -738,6 +738,7 @@ function openModal(itemId, projectId) {
     ttGroup.style.display = '';
     // Rebuild options from current ttProjectList
     ttSel.innerHTML = '<option value="">— auto-detectare —</option>' +
+      '<option value="__none__"' + ((row.ttLink||'') === '__none__' ? ' selected' : '') + '>✕ Fără ore TT</option>' +
       ttProjectList.map(p =>
         `<option value="${p.name}"${(row.ttLink||'') === p.name ? ' selected' : ''}>${p.displayName} · ${fmtHours(p.hours)||'0h'}</option>`
       ).join('');
@@ -875,6 +876,9 @@ async function syncTT(allTime = false) {
 }
 
 function getTTHours(projectName, ttLink) {
+  // Explicit "no link" sentinel
+  if (ttLink === '__none__') return null;
+  // Manual link override
   if (ttLink && ttHours[ttLink] !== undefined) return ttHours[ttLink];
   if (!projectName || !Object.keys(ttHours).length) return null;
   const name = projectName.toLowerCase();
@@ -882,25 +886,39 @@ function getTTHours(projectName, ttLink) {
   // 1. Match exact pe cheie
   if (ttHours[name] !== undefined) return ttHours[name];
 
-  // 2. Prima trecere: keyword complet in numele Gantt
-  //    ex: "haar" din "tasks haar" se regaseste in "2510_09_pls_25_10_haar"
+  // Tokenizeaza numele Gantt (cuvinte cu >= 3 caractere)
+  const nameTokens = name.split(/[\s_\-\.\/]+/).filter(w => w.length >= 3);
+
+  let bestKey = null, bestScore = -1;
+
   for (const [k, v] of Object.entries(ttHours)) {
     const keyword = k.replace(/^tasks?\s*/i, '').trim();
     if (!keyword) continue;
-    if (name.includes(keyword)) return v;
+
+    let score = 0;
+
+    if (name.includes(keyword)) {
+      // Substring complet gasit in nume → scor proportional cu lungimea
+      score = keyword.length * 2;
+    } else {
+      // Scor bazat pe cuvinte comune
+      const kwTokens = keyword.split(/[\s_\-\.\/]+/).filter(w => w.length >= 3);
+      for (const kt of kwTokens) {
+        if (nameTokens.some(nt => nt === kt))            score += 10; // cuvant identic
+        else if (nameTokens.some(nt => nt.includes(kt) || kt.includes(nt))) score += 3;
+      }
+      // Bonus firstWord pentru chei "tasks XXX"
+      if (/^tasks?\s+/i.test(k)) {
+        const fw = kwTokens[0];
+        if (fw && fw.length >= 3 && nameTokens.some(nt => nt === fw)) score += 5;
+      }
+    }
+
+    if (score > bestScore) { bestScore = score; bestKey = k; }
   }
 
-  // 3. A doua trecere: firstWord fallback — DOAR pentru chei "tasks XXX"
-  //    evita false-positive pe chei gen "2510_09_pls_haar" (firstWord="2510" e prea generic)
-  for (const [k, v] of Object.entries(ttHours)) {
-    if (!/^tasks?\s+/i.test(k)) continue;
-    const keyword = k.replace(/^tasks?\s*/i, '').trim();
-    if (!keyword) continue;
-    const firstWord = keyword.split(/[\s_\-]+/)[0];
-    if (firstWord.length > 2 && name.includes(firstWord)) return v;
-  }
-
-  return null;
+  // Prag minim: cel putin 5 puncte (evita false-positive pe 1 cuvant generic)
+  return (bestScore >= 5 && bestKey !== null) ? ttHours[bestKey] : null;
 }
 
 /* ══════════════════════════════════════════
