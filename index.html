@@ -401,6 +401,7 @@ async function loadData() {
     }
     setStatus('ok', 'Salvat');
     render();
+    scrollToToday();
   } catch (e) {
     setStatus('error', 'Eroare conexiune');
     render();
@@ -997,7 +998,19 @@ function handleBarDblClick(e, id, pid) {
 }
 
 /* ── Init ── */
+
+// Scroll la data de azi — apelat o singura data la incarcare
+function scrollToToday() {
+  const gantt = document.getElementById('gantt');
+  const VS = calcViewStart();
+  const todayX = diff(VS, todayStr()) * PPD;
+  // Pozitioneaza azi la ~300px de la marginea stanga (dupa panoul cu nume)
+  const offset = 300;
+  gantt.scrollLeft = Math.max(0, todayX - offset);
+}
+
 render();
+scrollToToday();
 initMsal().catch(console.error);
 
 // Restaureaza orele TT din cache la incarcare
