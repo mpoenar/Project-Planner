@@ -449,8 +449,27 @@ function showLoading(v) {
 }
 
 /* ── Gantt config ── */
-const VIEW_START = '2026-05-01';
 let PPD = 22;
+
+// Calculeaza dinamic prima zi a calendarului = prima zi a lunii celei mai vechi date din proiecte
+function calcViewStart() {
+  let minMs = d2ms('2026-05-01'); // fallback
+  for (const p of projects) {
+    minMs = Math.min(minMs, d2ms(p.start));
+    for (const t of p.tasks) minMs = Math.min(minMs, d2ms(t.start));
+  }
+  const d = new Date(minMs);
+  d.setDate(1); // snap la prima zi a lunii
+  return d.toISOString().split('T')[0];
+}
+
+// Numarul saptamanii ISO pentru o data
+function getISOWeek(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const thu = new Date(d); thu.setDate(d.getDate() - (d.getDay()||7) + 4);
+  const jan1 = new Date(thu.getFullYear(), 0, 1);
+  return Math.ceil(((thu - jan1) / 86400000 + 1) / 7);
+}
 let showOverlaps = false;
 
 const STATUSES = {
@@ -508,18 +527,18 @@ let projects = [
 ];
 
 /* ── Helpers ── */
-function calcTotalDays() {
+function calcTotalDays(vs) {
   if (!projects.length) return 184;
   const maxMs = projects.reduce((max, p) => {
     const pEnd = d2ms(p.end);
     const tEnd = p.tasks.reduce((m, t) => Math.max(m, d2ms(t.end)), pEnd);
     return Math.max(max, tEnd);
-  }, d2ms(addD(VIEW_START, 184)));
-  return Math.max(184, diff(VIEW_START, new Date(maxMs).toISOString().split('T')[0]) + 30);
+  }, d2ms(addD(vs, 184)));
+  return Math.max(184, diff(vs, new Date(maxMs).toISOString().split('T')[0]) + 30);
 }
 
-function getMonths(totalDays) {
-  const out = []; let d = new Date(VIEW_START + 'T00:00:00'), off = 0;
+function getMonths(totalDays, vs) {
+  const out = []; let d = new Date(vs + 'T00:00:00'), off = 0;
   while (off < totalDays) {
     const m = d.getMonth(), y = d.getFullYear();
     const next = new Date(y, m + 1, 1);
@@ -568,10 +587,12 @@ function render() {
   const search = document.getElementById('search').value;
   const rows = flatRows(search);
   const overlaps = showOverlaps ? getOverlaps() : new Set();
-  const totalDays = calcTotalDays();
-  const MONTHS = getMonths(totalDays);
+  const VS = calcViewStart();                    // dynamic view start
+  const totalDays = calcTotalDays(VS);
+  const MONTHS = getMonths(totalDays, VS);
   const totalW = totalDays * PPD;
-  const todayX = diff(VIEW_START, todayStr()) * PPD;
+  const todayX = diff(VS, todayStr()) * PPD;
+  const startWeek = getISOWeek(VS);             // correct week number for header
 
   document.getElementById('zoom-val').textContent = PPD + 'px/zi';
   document.getElementById('timeline-header').style.width = totalW + 'px';
@@ -582,7 +603,7 @@ function render() {
 
   document.getElementById('week-row').innerHTML =
     Array.from({length: Math.ceil(totalDays / 7)}, (_, i) =>
-      `<div class="week-cell" style="width:${7 * PPD}px">${PPD >= 14 ? 'S' + (i + 19) : ''}</div>`
+      `<div class="week-cell" style="width:${7 * PPD}px">${PPD >= 14 ? 'S' + ((startWeek + i - 1) % 52 + 1) : ''}</div>`
     ).join('') +
     (todayX >= 0 && todayX <= totalW
       ? `<div class="today-head-line" style="left:${todayX}px"><span class="today-lbl">azi</span></div>` : '');
@@ -590,7 +611,7 @@ function render() {
   document.getElementById('footer-right').style.width = totalW + 'px';
 
   document.getElementById('rows-container').innerHTML = rows.map((row, i) => {
-    const x = diff(VIEW_START, row.start) * PPD;
+    const x = diff(VS, row.start) * PPD;
     const w = Math.max(diff(row.start, row.end) * PPD, 6);
     const isOvlp = row.isProject && overlaps.has(row.id);
     const st = STATUSES[row.status] || STATUSES.none;
