@@ -230,6 +230,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <button class="zbtn" onclick="zoom(3)">+</button>
   <button id="btn-add-project" onclick="addProject()">+ Proiect nou</button>
   <button id="btn-logs" onclick="showLogs()" style="display:none;height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer">📋 Jurnal</button>
+  <button id="btn-whitelist" onclick="showWlModal()" style="display:none;height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer">👥 Utilizatori</button>
   <button id="user-btn" onclick="logout()" title="Deconectare">👤 <span id="user-name"></span></button>
 </div>
 
@@ -331,6 +332,36 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   </div>
 </div>
 
+<!-- ── Access Denied overlay ── -->
+<div id="access-denied" style="display:none;position:fixed;inset:0;background:var(--bg0);z-index:3000;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="background:var(--bg1);border:1px solid var(--bd);border-radius:var(--rlg);padding:40px;width:400px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.12)">
+    <div style="font-size:36px;margin-bottom:16px">🔒</div>
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:10px">Acces restricționat</h2>
+    <p style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:6px">Contul tău nu are acces la Project Planner.</p>
+    <p id="denied-email" style="font-size:12px;color:var(--t3);margin-bottom:24px"></p>
+    <p style="font-size:12px;color:var(--t2)">Contactează un administrator pentru acces. Vei fi deconectat automat...</p>
+  </div>
+</div>
+
+<!-- ── Whitelist modal (admin only) ── -->
+<div id="wl-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1200;align-items:center;justify-content:center" onclick="closeWlOverlay(event)">
+  <div id="wl-modal" style="background:var(--bg1);border:1px solid var(--bd);border-radius:var(--rlg);width:480px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.2)">
+    <div style="display:flex;align-items:center;padding:18px 24px 14px;border-bottom:1px solid var(--bd);gap:10px;flex-shrink:0">
+      <span style="font-size:15px;font-weight:700;flex:1">👥 Utilizatori autorizați</span>
+      <button onclick="hideWlModal()" style="background:none;border:none;font-size:18px;color:var(--t3);cursor:pointer">×</button>
+    </div>
+    <div style="overflow:auto;flex:1;padding:16px 24px">
+      <div id="wl-list" style="margin-bottom:16px"></div>
+      <div style="display:flex;gap:8px">
+        <input id="wl-new-email" class="field-input" placeholder="email@me-concept.de" style="flex:1"
+          onkeydown="if(event.key==='Enter') addToWhitelist()">
+        <button onclick="addToWhitelist()" style="height:36px;padding:0 16px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">+ Adaugă</button>
+      </div>
+      <p style="font-size:11px;color:var(--t3);margin-top:8px">Adaugă adresa de email Microsoft a utilizatorului.</p>
+    </div>
+  </div>
+</div>
+
 <!-- ── Log Modal ── -->
 <div id="log-overlay" onclick="closeLogOverlay(event)">
   <div id="log-modal">
@@ -416,11 +447,21 @@ async function initMsal() {
 
   if (currentAccount) {
     document.getElementById('login-overlay').style.display = 'none';
-    document.getElementById('user-name').textContent = currentAccount.name?.split(' ')[0] || '';
     showLoading(true);
+    // Incarca whitelist si verifica accesul INAINTE de orice altceva
+    await loadWhitelist();
+    if (!checkAccess()) {
+      showLoading(false);
+      denyAccess();
+      return;
+    }
+    document.getElementById('user-name').textContent = currentAccount.name?.split(' ')[0] || '';
     await loadData();
     await loadLogs();
-    if (isAdmin()) document.getElementById('btn-logs').style.display = '';
+    if (isAdmin()) {
+      document.getElementById('btn-logs').style.display = '';
+      document.getElementById('btn-whitelist').style.display = '';
+    }
     showLoading(false);
   }
 }
@@ -686,6 +727,113 @@ const ADMIN_USERS = ['Marius Poenar', 'Martin Mayer'];
 function isAdmin() {
   const name = currentAccount?.name || '';
   return ADMIN_USERS.some(a => name.toLowerCase().includes(a.toLowerCase().split(' ')[0]));
+}
+
+/* ── Whitelist (access control) ── */
+// Fallback la prima utilizare — echipa curenta
+const DEFAULT_WHITELIST = [
+  'm.poenar@me-concept.de',
+  'i.chindea@me-concept.de',
+  's.picu@me-concept.de',
+  'm.mayer@me-concept.de',
+  'v.rosca@me-concept.de',
+];
+let whitelist = [];
+let whitelistItemId = null;
+
+async function loadWhitelist() {
+  try {
+    const siteId = await getSiteId();
+    const listId = await getOrCreateList(siteId);
+    if (!siteId || !listId) return;
+    const items = await graph('GET', `/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=10&$select=id,fields`);
+    const wlItem = items?.value?.find(i => i.fields?.Title === 'whitelist');
+    if (wlItem) {
+      whitelistItemId = wlItem.id;
+      try {
+        const parsed = JSON.parse(wlItem.fields.JsonData || '[]');
+        if (Array.isArray(parsed) && parsed.length > 0) { whitelist = parsed; return; }
+      } catch { /* fall through */ }
+    }
+    // Prima utilizare — salveaza whitelist-ul default in SharePoint
+    whitelist = [...DEFAULT_WHITELIST];
+    await saveWhitelist();
+  } catch { whitelist = [...DEFAULT_WHITELIST]; }
+}
+
+async function saveWhitelist() {
+  try {
+    const siteId = await getSiteId();
+    const listId = await getOrCreateList(siteId);
+    if (!siteId || !listId) return;
+    const json = JSON.stringify(whitelist);
+    if (whitelistItemId) {
+      await graph('PATCH', `/sites/${siteId}/lists/${listId}/items/${whitelistItemId}/fields`, { JsonData: json });
+    } else {
+      const item = await graph('POST', `/sites/${siteId}/lists/${listId}/items`, {
+        fields: { Title: 'whitelist', JsonData: json },
+      });
+      whitelistItemId = item?.id;
+    }
+  } catch { /* non-critical */ }
+}
+
+function checkAccess() {
+  if (!currentAccount) return false;
+  const email = (currentAccount.username || '').toLowerCase();
+  return whitelist.some(e => e.toLowerCase() === email);
+}
+
+function denyAccess() {
+  const email = currentAccount?.username || '';
+  document.getElementById('denied-email').textContent = email;
+  const overlay = document.getElementById('access-denied');
+  overlay.style.display = 'flex';
+  // Logout automat dupa 4 secunde
+  setTimeout(() => msalInstance.logoutRedirect(), 4000);
+}
+
+/* ── Whitelist modal UI ── */
+function showWlModal() {
+  if (!isAdmin()) return;
+  renderWlModal();
+  document.getElementById('wl-overlay').style.display = 'flex';
+}
+function hideWlModal() { document.getElementById('wl-overlay').style.display = 'none'; }
+function closeWlOverlay(e) { if (e.target === document.getElementById('wl-overlay')) hideWlModal(); }
+
+function renderWlModal() {
+  document.getElementById('wl-list').innerHTML = whitelist.length
+    ? whitelist.map((email, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bd)">
+          <span style="flex:1;font-size:13px;color:var(--t1)">${email}</span>
+          <button onclick="removeFromWhitelist(${i})"
+            style="padding:3px 10px;border-radius:var(--r);border:1px solid #f5c6cb;background:#fde8ec;color:var(--red);font-size:11px;cursor:pointer">
+            Elimină
+          </button>
+        </div>`).join('')
+    : '<p style="font-size:12px;color:var(--t3);padding:8px 0">Niciun utilizator autorizat.</p>';
+}
+
+function addToWhitelist() {
+  const input = document.getElementById('wl-new-email');
+  const email = input.value.trim().toLowerCase();
+  if (!email || !email.includes('@')) { input.focus(); return; }
+  if (whitelist.includes(email)) { input.value = ''; return; }
+  whitelist.push(email);
+  input.value = '';
+  renderWlModal();
+  saveWhitelist();
+  addLog('edit_project', '—', `Utilizator adăugat în whitelist: ${email}`);
+}
+
+function removeFromWhitelist(idx) {
+  const email = whitelist[idx];
+  if (!confirm(`Elimini accesul pentru ${email}?`)) return;
+  whitelist.splice(idx, 1);
+  renderWlModal();
+  saveWhitelist();
+  addLog('edit_project', '—', `Utilizator eliminat din whitelist: ${email}`);
 }
 
 /* ── Logs storage ── */
