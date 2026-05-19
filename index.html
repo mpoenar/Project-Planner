@@ -139,6 +139,12 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 .tt-link-row select{flex:1;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:7px 10px;color:var(--t1);font-size:12px;outline:none;font-family:inherit}
 .tt-link-row select:focus{border-color:var(--blue)}
 .tt-link-badge{font-size:11px;color:var(--green);white-space:nowrap;font-weight:700}
+/* Multi-assignee */
+.assignee-list{display:flex;flex-wrap:wrap;gap:6px}
+.assignee-item{display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--r);border:1px solid var(--bd);cursor:pointer;font-size:12px;user-select:none;transition:all .15s;background:transparent;color:var(--t2)}
+.assignee-item:hover{border-color:var(--bd2);background:var(--bg2)}
+.assignee-item.checked{background:var(--bg2);border-color:var(--blue);color:var(--t1);font-weight:600}
+.assignee-item input[type=checkbox]{accent-color:var(--blue);width:13px;height:13px;cursor:pointer;flex-shrink:0}
 
 /* Hover tooltip custom */
 #hover-tooltip{position:fixed;background:var(--bg1);border:1px solid var(--bd2);border-radius:var(--rlg);padding:14px 18px;pointer-events:none;z-index:9998;display:none;min-width:220px;max-width:320px;box-shadow:0 6px 24px rgba(0,0,0,.14)}
@@ -297,10 +303,8 @@ input[type=range]{width:100%;accent-color:var(--blue)}
       </div>
     </div>
     <div class="field-group" id="m-assignee-group" style="display:none">
-      <label class="field-label">Responsabil</label>
-      <select class="field-input" id="m-assignee" style="cursor:pointer">
-        <option value="">— Neasignat —</option>
-      </select>
+      <label class="field-label">Responsabili</label>
+      <div class="assignee-list" id="m-assignee-list"></div>
     </div>
     <div class="field-group">
       <label class="field-label" id="m-prog-lbl">Progres — 0%</label>
@@ -482,12 +486,13 @@ async function loadData() {
     const listId = await getOrCreateList(siteId);
     if (!listId) { setStatus('error', 'Eroare listă'); return; }
 
-    const items = await graph('GET', `/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=5&$select=id,fields`);
+    const items = await graph('GET', `/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=10&$select=id,fields`);
     if (items?.value?.length > 0) {
-      const item = items.value[0];
-      listItemId = item.id;
+      // Cauta explicit itemul cu Title='state' (nu lua primul din lista care poate fi 'logs')
+      const stateItem = items.value.find(i => i.fields?.Title === 'state') || items.value[0];
+      listItemId = stateItem.id;
       try {
-        const parsed = JSON.parse(item.fields.JsonData || '[]');
+        const parsed = JSON.parse(stateItem.fields.JsonData || '[]');
         if (Array.isArray(parsed) && parsed.length > 0) projects = parsed;
       } catch { /* use defaults */ }
     }
@@ -702,20 +707,25 @@ async function loadLogs() {
     const siteId = await getSiteId();
     const listId = await getOrCreateList(siteId);
     if (!siteId || !listId) return;
-    const items = await graph('GET', `/sites/${siteId}/lists/${listId}/items?$expand=fields&$filter=fields/Title eq 'logs'&$select=id,fields`);
+    // Reincarca lista — poate folosi aceleasi date deja aduse de loadData
+    const items = await graph('GET', `/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=10&$select=id,fields`);
     if (items?.value?.length > 0) {
-      logItemId = items.value[0].id;
-      try {
-        const parsed = JSON.parse(items.value[0].fields.JsonData || '[]');
-        if (Array.isArray(parsed)) logs = parsed;
-      } catch { /* keep empty */ }
+      const logsItem = items.value.find(i => i.fields?.Title === 'logs');
+      if (logsItem) {
+        logItemId = logsItem.id;
+        try {
+          const parsed = JSON.parse(logsItem.fields.JsonData || '[]');
+          if (Array.isArray(parsed)) logs = parsed;
+        } catch { /* keep empty */ }
+      }
     }
   } catch { /* non-critical */ }
 }
 
 function queueSaveLogs() {
+  // Salvam imediat — logurile sunt rare si trebuie sa persiste
   clearTimeout(logSaveTimer);
-  logSaveTimer = setTimeout(saveLogsToSP, 2000);
+  logSaveTimer = setTimeout(saveLogsToSP, 300);
 }
 
 async function saveLogsToSP() {
@@ -1074,11 +1084,17 @@ function openModal(itemId, projectId) {
     ttGroup.style.display   = '';
     allocGroup.style.display = '';
     document.getElementById('m-alloc-hours').value = row.allocatedHours || '';
-    // Assignee dropdown
+    // Assignee checkbox list (backward compat: string → array)
     document.getElementById('m-assignee-group').style.display = '';
-    const asgSel = document.getElementById('m-assignee');
-    asgSel.innerHTML = '<option value="">— Neasignat —</option>' +
-      TEAM.map(m => `<option value="${m.id}"${(row.assignee||'') === m.id ? ' selected' : ''}>${m.name}</option>`).join('');
+    const curAssignees = Array.isArray(row.assignee)
+      ? row.assignee
+      : (row.assignee ? [row.assignee] : []);
+    document.getElementById('m-assignee-list').innerHTML = TEAM.map(m => `
+      <label class="assignee-item${curAssignees.includes(m.id) ? ' checked' : ''}">
+        <input type="checkbox" value="${m.id}" ${curAssignees.includes(m.id) ? 'checked' : ''}
+          onchange="this.closest('.assignee-item').classList.toggle('checked', this.checked)">
+        ${m.name}
+      </label>`).join('');
     // Rebuild TT options
     ttSel.innerHTML = '<option value="">— auto-detectare —</option>' +
       '<option value="__none__"' + ((row.ttLink||'') === '__none__' ? ' selected' : '') + '>✕ Fără ore TT</option>' +
@@ -1192,22 +1208,24 @@ function saveItem() {
     const p = projects.find(x => x.id === modalRow.id);
     const ttLinkVal  = document.getElementById('m-tt-link')?.value || '';
     const allocHours = parseFloat(document.getElementById('m-alloc-hours')?.value) || 0;
-    const assignee   = document.getElementById('m-assignee')?.value || '';
+    const assignees  = [...document.querySelectorAll('#m-assignee-list input:checked')].map(cb => cb.value);
     const finalProgress = +document.getElementById('m-progress').value;
     // Build change details for log
     const changes = [];
     if (p) {
-      if (p.name !== name)           changes.push(`Nume: "${p.name}" → "${name}"`);
-      if (p.start !== start)         changes.push(`Start: ${p.start} → ${start}`);
-      if (p.end !== end)             changes.push(`Final: ${p.end} → ${end}`);
+      if (p.name !== name)              changes.push(`Nume: "${p.name}" → "${name}"`);
+      if (p.start !== start)            changes.push(`Start: ${p.start} → ${start}`);
+      if (p.end !== end)                changes.push(`Final: ${p.end} → ${end}`);
       if (p.status !== modalRow.status) changes.push(`Status: ${p.status} → ${modalRow.status}`);
       if (p.progress !== finalProgress) changes.push(`Progres: ${p.progress}% → ${finalProgress}%`);
-      if ((p.assignee||'') !== assignee) {
-        const prev = TEAM.find(m=>m.id===p.assignee)?.name||'Neasignat';
-        const next = TEAM.find(m=>m.id===assignee)?.name||'Neasignat';
-        changes.push(`Responsabil: ${prev} → ${next}`);
+      // Compare assignee arrays (backward compat)
+      const prevA = Array.isArray(p.assignee) ? p.assignee : (p.assignee ? [p.assignee] : []);
+      if (JSON.stringify([...prevA].sort()) !== JSON.stringify([...assignees].sort())) {
+        const prevNames = prevA.map(id => TEAM.find(m=>m.id===id)?.name||id).join(', ') || 'Neasignat';
+        const nextNames = assignees.map(id => TEAM.find(m=>m.id===id)?.name||id).join(', ') || 'Neasignat';
+        changes.push(`Responsabili: ${prevNames} → ${nextNames}`);
       }
-      Object.assign(p, { name, start, end, progress: finalProgress, status: modalRow.status, color, ttLink: ttLinkVal, allocatedHours: allocHours, assignee });
+      Object.assign(p, { name, start, end, progress: finalProgress, status: modalRow.status, color, ttLink: ttLinkVal, allocatedHours: allocHours, assignee: assignees });
     }
     addLog('edit_project', name, changes.length ? changes.join(' · ') : 'Salvat fără modificări');
   } else {
@@ -1520,11 +1538,15 @@ document.getElementById('gantt').addEventListener('scroll', updateBarLabels, { p
 
     const htAsgRow = document.getElementById('ht-asg-row');
     const htAsg    = document.getElementById('ht-asg');
-    if (isProject && row.assignee) {
-      const member = TEAM.find(m => m.id === row.assignee);
-      if (member && htAsgRow && htAsg) {
-        htAsg.textContent      = member.name;
+    if (isProject && row.assignee && htAsgRow && htAsg) {
+      // backward compat: string → array
+      const asgArr = Array.isArray(row.assignee) ? row.assignee : [row.assignee];
+      const names  = asgArr.map(id => TEAM.find(m=>m.id===id)?.name).filter(Boolean);
+      if (names.length) {
+        htAsg.textContent      = names.join(', ');
         htAsgRow.style.display = 'flex';
+      } else {
+        htAsgRow.style.display = 'none';
       }
     } else if (htAsgRow) {
       htAsgRow.style.display = 'none';
@@ -1559,6 +1581,12 @@ function scrollToToday() {
 render();
 scrollToToday();
 initMsal().catch(console.error);
+
+// Flush la inchiderea paginii — salveaza orice pending
+window.addEventListener('beforeunload', () => {
+  if (saveTimer)    { clearTimeout(saveTimer);    doSave(); }
+  if (logSaveTimer) { clearTimeout(logSaveTimer); saveLogsToSP(); }
+});
 
 // Restaureaza orele TT din cache la incarcare
 (function() {
