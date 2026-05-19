@@ -1601,8 +1601,27 @@ document.addEventListener('mouseup', () => {
   const barEl = document.querySelector(`.bar[data-bar-id="${dragState.id}"]`);
   if (barEl) barEl.classList.remove('is-dragging');
   _hideTip();
+
+  if (wasDrag) {
+    const row = _findRow(dragState.id, dragState.pid);
+    if (row) {
+      const changes = [];
+      if (dragState.origStart !== row.start) changes.push(`Start: ${dragState.origStart} → ${row.start}`);
+      if (dragState.origEnd   !== row.end)   changes.push(`Final: ${dragState.origEnd} → ${row.end}`);
+      if (changes.length) {
+        // Gaseste numele proiectului parinte pentru task-uri
+        const projectName = dragState.pid
+          ? (projects.find(p => p.id === dragState.pid)?.name || '—')
+          : row.name;
+        const action = dragState.pid ? 'edit_task' : 'edit_project';
+        const label  = dragState.pid ? `Task "${row.name}": ` : '';
+        addLog(action, projectName, label + changes.join(' · ') + ' (drag)');
+      }
+    }
+    render(); queueSave();
+  }
+
   dragState = null;
-  if (wasDrag) { render(); queueSave(); }
 });
 
 function handleBarDblClick(e, id, pid) {
