@@ -165,6 +165,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <div class="ht-row"><span class="ht-icon">⏳</span><span id="ht-days" class="ht-val"></span></div>
   <div class="ht-row" id="ht-tt-row" style="display:none"><span class="ht-icon">⏱</span><span id="ht-tt" class="ht-val"></span></div>
   <div class="ht-row" id="ht-prog-row" style="display:none"><span class="ht-icon">▰</span><span id="ht-prog" class="ht-val"></span></div>
+  <div class="ht-row" id="ht-asg-row" style="display:none"><span class="ht-icon">👤</span><span id="ht-asg" class="ht-val"></span></div>
 </div>
 
 <!-- ── Login overlay ── -->
@@ -274,6 +275,12 @@ input[type=range]{width:100%;accent-color:var(--blue)}
           placeholder="ex: 200" style="width:130px;flex-shrink:0" oninput="syncModal()">
         <span id="m-alloc-info" style="font-size:11px;color:var(--t2);line-height:1.4"></span>
       </div>
+    </div>
+    <div class="field-group" id="m-assignee-group" style="display:none">
+      <label class="field-label">Responsabil</label>
+      <select class="field-input" id="m-assignee" style="cursor:pointer">
+        <option value="">— Neasignat —</option>
+      </select>
     </div>
     <div class="field-group">
       <label class="field-label" id="m-prog-lbl">Progres — 0%</label>
@@ -598,6 +605,15 @@ const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).sli
 
 const STATUS_COLORS = { all:'var(--t1)', 'in-progress':'var(--green)', delayed:'var(--orange)', 'at-risk':'#b45309', problem:'var(--red)', cancelled:'var(--t3)', completed:'var(--green)' };
 
+// Membrii echipei (sincronizat cu main.py)
+const TEAM = [
+  { id:'marius', name:'Marius Poenar' },
+  { id:'ioan',   name:'Ioan Chindea'  },
+  { id:'stefan', name:'Stefan Picu'   },
+  { id:'martin', name:'Martin Mayer'  },
+  { id:'vadim',  name:'Vadim Rosca'   },
+];
+
 function setFilter(status) {
   activeFilter = status;
   document.querySelectorAll('.filter-btn').forEach(b => {
@@ -852,6 +868,11 @@ function openModal(itemId, projectId) {
     ttGroup.style.display   = '';
     allocGroup.style.display = '';
     document.getElementById('m-alloc-hours').value = row.allocatedHours || '';
+    // Assignee dropdown
+    document.getElementById('m-assignee-group').style.display = '';
+    const asgSel = document.getElementById('m-assignee');
+    asgSel.innerHTML = '<option value="">— Neasignat —</option>' +
+      TEAM.map(m => `<option value="${m.id}"${(row.assignee||'') === m.id ? ' selected' : ''}>${m.name}</option>`).join('');
     // Rebuild TT options
     ttSel.innerHTML = '<option value="">— auto-detectare —</option>' +
       '<option value="__none__"' + ((row.ttLink||'') === '__none__' ? ' selected' : '') + '>✕ Fără ore TT</option>' +
@@ -864,6 +885,7 @@ function openModal(itemId, projectId) {
   } else {
     ttGroup.style.display   = 'none';
     allocGroup.style.display = 'none';
+    document.getElementById('m-assignee-group').style.display = 'none';
   }
   syncModal();
   document.getElementById('modal-overlay').classList.add('open');
@@ -964,8 +986,9 @@ function saveItem() {
     const p = projects.find(x => x.id === modalRow.id);
     const ttLinkVal  = document.getElementById('m-tt-link')?.value || '';
     const allocHours = parseFloat(document.getElementById('m-alloc-hours')?.value) || 0;
-    const finalProgress = +document.getElementById('m-progress').value; // already updated by syncModal if auto
-    if (p) Object.assign(p, { name, start, end, progress: finalProgress, status: modalRow.status, color, ttLink: ttLinkVal, allocatedHours: allocHours });
+    const assignee   = document.getElementById('m-assignee')?.value || '';
+    const finalProgress = +document.getElementById('m-progress').value;
+    if (p) Object.assign(p, { name, start, end, progress: finalProgress, status: modalRow.status, color, ttLink: ttLinkVal, allocatedHours: allocHours, assignee });
   } else {
     const p = projects.find(x => x.id === modalRow.projectId);
     if (p) { const t = p.tasks.find(x => x.id === modalRow.id); if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color }); }
@@ -1252,6 +1275,18 @@ document.getElementById('gantt').addEventListener('scroll', updateBarLabels, { p
       htProgRow.style.display = 'flex';
     } else {
       htProgRow.style.display = 'none';
+    }
+
+    const htAsgRow = document.getElementById('ht-asg-row');
+    const htAsg    = document.getElementById('ht-asg');
+    if (isProject && row.assignee) {
+      const member = TEAM.find(m => m.id === row.assignee);
+      if (member && htAsgRow && htAsg) {
+        htAsg.textContent      = member.name;
+        htAsgRow.style.display = 'flex';
+      }
+    } else if (htAsgRow) {
+      htAsgRow.style.display = 'none';
     }
 
     ht.style.display = 'block';
