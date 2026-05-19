@@ -147,6 +147,25 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 .ht-row:last-child{margin-bottom:0}
 .ht-icon{font-size:13px;width:16px;flex-shrink:0;text-align:center}
 .ht-val{color:var(--t1);font-weight:600}
+/* Log modal */
+#log-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1100;align-items:center;justify-content:center}
+#log-overlay.open{display:flex}
+#log-modal{background:var(--bg1);border:1px solid var(--bd);border-radius:var(--rlg);width:920px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.22)}
+#log-modal-header{display:flex;align-items:center;padding:18px 24px 14px;border-bottom:1px solid var(--bd);gap:12px;flex-shrink:0}
+#log-modal-header h3{font-size:15px;font-weight:700;flex:1;margin:0}
+#log-count{font-size:11px;color:var(--t3)}
+.log-filter-row{display:flex;gap:8px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap}
+.log-filter-row input,.log-filter-row select{height:28px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t1);padding:0 10px;font-size:12px;outline:none;font-family:inherit}
+.log-filter-row input{width:200px}
+#log-table-wrap{overflow:auto;flex:1}
+.log-table{width:100%;border-collapse:collapse;font-size:12px}
+.log-table th{position:sticky;top:0;background:var(--bg2);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--t2);padding:8px 14px;text-align:left;border-bottom:1px solid var(--bd);white-space:nowrap}
+.log-table td{padding:8px 14px;border-bottom:1px solid var(--bd);color:var(--t2);vertical-align:top;line-height:1.4}
+.log-table td.log-ts{white-space:nowrap;color:var(--t3);font-size:11px}
+.log-table td.log-user{white-space:nowrap;font-weight:600;color:var(--t1)}
+.log-table td.log-project{font-weight:600;color:var(--t1)}
+.log-table tr:hover td{background:var(--bg2)}
+.log-action-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:700}
 #loading-screen{position:fixed;inset:0;background:var(--bg0);display:none;align-items:center;justify-content:center;z-index:1500;flex-direction:column;gap:12px}
 #loading-screen.visible{display:flex}
 .spinner{width:32px;height:32px;border:3px solid var(--bd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
@@ -204,6 +223,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   <span id="zoom-val">22px/zi</span>
   <button class="zbtn" onclick="zoom(3)">+</button>
   <button id="btn-add-project" onclick="addProject()">+ Proiect nou</button>
+  <button id="btn-logs" onclick="showLogs()" style="display:none;height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer">📋 Jurnal</button>
   <button id="user-btn" onclick="logout()" title="Deconectare">👤 <span id="user-name"></span></button>
 </div>
 
@@ -307,6 +327,46 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   </div>
 </div>
 
+<!-- ── Log Modal ── -->
+<div id="log-overlay" onclick="closeLogOverlay(event)">
+  <div id="log-modal">
+    <div id="log-modal-header">
+      <h3>📋 Jurnal activitate</h3>
+      <span id="log-count"></span>
+      <button onclick="exportLogs()" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--bg2);color:var(--t2);font-size:11px;cursor:pointer">⬇ Export CSV</button>
+      <button onclick="hideLogModal()" style="background:none;border:none;font-size:18px;color:var(--t3);cursor:pointer;line-height:1;padding:0 4px">×</button>
+    </div>
+    <div class="log-filter-row">
+      <input id="log-search" placeholder="Caută…" oninput="renderLogs()">
+      <select id="log-filter-user" onchange="renderLogs()">
+        <option value="">Toți utilizatorii</option>
+      </select>
+      <select id="log-filter-action" onchange="renderLogs()">
+        <option value="">Toate acțiunile</option>
+        <option value="create_project">Proiect creat</option>
+        <option value="edit_project">Proiect editat</option>
+        <option value="delete_project">Proiect șters</option>
+        <option value="add_task">Task adăugat</option>
+        <option value="edit_task">Task editat</option>
+        <option value="delete_task">Task șters</option>
+      </select>
+      <button onclick="clearLogs()" style="height:28px;padding:0 12px;border-radius:var(--r);border:1px solid #f5c6cb;background:#fde8ec;color:var(--red);font-size:11px;cursor:pointer;margin-left:auto">🗑 Șterge jurnal</button>
+    </div>
+    <div id="log-table-wrap">
+      <table class="log-table">
+        <thead><tr>
+          <th>Data &amp; ora</th>
+          <th>Utilizator</th>
+          <th>Acțiune</th>
+          <th>Proiect</th>
+          <th>Detalii</th>
+        </tr></thead>
+        <tbody id="log-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ════════════════════════════════════════════
    CONFIGURARE — completează după înregistrare
@@ -355,6 +415,8 @@ async function initMsal() {
     document.getElementById('user-name').textContent = currentAccount.name?.split(' ')[0] || '';
     showLoading(true);
     await loadData();
+    await loadLogs();
+    if (isAdmin()) document.getElementById('btn-logs').style.display = '';
     showLoading(false);
   }
 }
@@ -614,6 +676,148 @@ const TEAM = [
   { id:'vadim',  name:'Vadim Rosca'   },
 ];
 
+// Utilizatori cu acces la jurnal
+const ADMIN_USERS = ['Marius Poenar', 'Martin Mayer'];
+function isAdmin() {
+  const name = currentAccount?.name || '';
+  return ADMIN_USERS.some(a => name.toLowerCase().includes(a.toLowerCase().split(' ')[0]));
+}
+
+/* ── Logs storage ── */
+let logs = [];
+let logItemId = null;
+let logSaveTimer = null;
+
+const LOG_ACTIONS = {
+  create_project: { label:'Proiect creat',  color:'#1d9e75', bg:'#d4f4e8' },
+  edit_project:   { label:'Proiect editat', color:'#1672d1', bg:'#dceeff' },
+  delete_project: { label:'Proiect șters',  color:'#d7263d', bg:'#fde8ec' },
+  add_task:       { label:'Task adăugat',   color:'#7f77dd', bg:'#ebe9ff' },
+  edit_task:      { label:'Task editat',    color:'#ba7517', bg:'#fef0d8' },
+  delete_task:    { label:'Task șters',     color:'#d05c0a', bg:'#fde8d6' },
+};
+
+async function loadLogs() {
+  try {
+    const siteId = await getSiteId();
+    const listId = await getOrCreateList(siteId);
+    if (!siteId || !listId) return;
+    const items = await graph('GET', `/sites/${siteId}/lists/${listId}/items?$expand=fields&$filter=fields/Title eq 'logs'&$select=id,fields`);
+    if (items?.value?.length > 0) {
+      logItemId = items.value[0].id;
+      try {
+        const parsed = JSON.parse(items.value[0].fields.JsonData || '[]');
+        if (Array.isArray(parsed)) logs = parsed;
+      } catch { /* keep empty */ }
+    }
+  } catch { /* non-critical */ }
+}
+
+function queueSaveLogs() {
+  clearTimeout(logSaveTimer);
+  logSaveTimer = setTimeout(saveLogsToSP, 2000);
+}
+
+async function saveLogsToSP() {
+  try {
+    const siteId = await getSiteId();
+    const listId = await getOrCreateList(siteId);
+    if (!siteId || !listId) return;
+    const json = JSON.stringify(logs.slice(-500)); // keep last 500 entries
+    if (logItemId) {
+      await graph('PATCH', `/sites/${siteId}/lists/${listId}/items/${logItemId}/fields`, { JsonData: json });
+    } else {
+      const item = await graph('POST', `/sites/${siteId}/lists/${listId}/items`, {
+        fields: { Title: 'logs', JsonData: json },
+      });
+      logItemId = item?.id;
+    }
+  } catch { /* non-critical */ }
+}
+
+function addLog(action, projectName, details) {
+  if (!currentAccount) return;
+  logs.push({
+    ts:      new Date().toISOString(),
+    user:    currentAccount.name || 'Unknown',
+    action,
+    project: projectName || '—',
+    details: details || '',
+  });
+  queueSaveLogs();
+}
+
+/* ── Log modal UI ── */
+function showLogs() {
+  if (!isAdmin()) return;
+  // Populate user filter
+  const userSel = document.getElementById('log-filter-user');
+  const users = [...new Set(logs.map(l => l.user))].sort();
+  userSel.innerHTML = '<option value="">Toți utilizatorii</option>' +
+    users.map(u => `<option value="${u}">${u}</option>`).join('');
+  renderLogs();
+  document.getElementById('log-overlay').classList.add('open');
+}
+
+function hideLogModal() {
+  document.getElementById('log-overlay').classList.remove('open');
+}
+function closeLogOverlay(e) {
+  if (e.target === document.getElementById('log-overlay')) hideLogModal();
+}
+
+function renderLogs() {
+  const q       = (document.getElementById('log-search')?.value || '').toLowerCase();
+  const uFilter = document.getElementById('log-filter-user')?.value || '';
+  const aFilter = document.getElementById('log-filter-action')?.value || '';
+
+  const filtered = logs.filter(l => {
+    if (uFilter && l.user !== uFilter) return false;
+    if (aFilter && l.action !== aFilter) return false;
+    if (q && ![l.user,l.project,l.details,l.action].some(v=>(v||'').toLowerCase().includes(q))) return false;
+    return true;
+  }).slice().reverse(); // newest first
+
+  document.getElementById('log-count').textContent = `${filtered.length} / ${logs.length} înregistrări`;
+
+  const tbody = document.getElementById('log-tbody');
+  tbody.innerHTML = filtered.map(l => {
+    const d   = new Date(l.ts);
+    const ts  = d.toLocaleDateString('ro-RO') + ' ' + d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+    const act = LOG_ACTIONS[l.action] || { label: l.action, color:'var(--t2)', bg:'var(--bg2)' };
+    return `<tr>
+      <td class="log-ts">${ts}</td>
+      <td class="log-user">${l.user}</td>
+      <td><span class="log-action-badge" style="color:${act.color};background:${act.bg}">${act.label}</span></td>
+      <td class="log-project">${l.project}</td>
+      <td>${l.details}</td>
+    </tr>`;
+  }).join('');
+}
+
+function clearLogs() {
+  if (!confirm('Ștergi tot jurnalul? Acțiunea este ireversibilă.')) return;
+  logs = [];
+  saveLogsToSP();
+  renderLogs();
+}
+
+function exportLogs() {
+  const rows = [['Data/ora','Utilizator','Actiune','Proiect','Detalii']];
+  logs.slice().reverse().forEach(l => {
+    const d = new Date(l.ts);
+    rows.push([
+      d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}),
+      l.user, (LOG_ACTIONS[l.action]?.label||l.action), l.project, l.details
+    ]);
+  });
+  const csv = rows.map(r => r.map(v => `"${(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = 'jurnal_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
 function setFilter(status) {
   activeFilter = status;
   document.querySelectorAll('.filter-btn').forEach(b => {
@@ -822,6 +1026,7 @@ function addProject() {
   const name = uniqueName('Proiect nou', null);
   projects.push({id:uid(),name,color:nextProjectColor(),
     collapsed:false,start:t,end:addD(t,30),status:'none',progress:0,tasks:[]});
+  addLog('create_project', name, `Start: ${t} · Durată: 30 zile`);
   render(); queueSave();
 }
 function addTask(projId) {
@@ -830,6 +1035,7 @@ function addTask(projId) {
   p.collapsed = false;
   p.tasks.push({id:uid(),name:'Task nou',color:TASK_COLOR,
     start:todayStr(),end:addD(todayStr(),14),status:'none',progress:0});
+  addLog('add_task', p.name, 'Task nou adăugat');
   render(); queueSave();
 }
 
@@ -988,17 +1194,52 @@ function saveItem() {
     const allocHours = parseFloat(document.getElementById('m-alloc-hours')?.value) || 0;
     const assignee   = document.getElementById('m-assignee')?.value || '';
     const finalProgress = +document.getElementById('m-progress').value;
-    if (p) Object.assign(p, { name, start, end, progress: finalProgress, status: modalRow.status, color, ttLink: ttLinkVal, allocatedHours: allocHours, assignee });
+    // Build change details for log
+    const changes = [];
+    if (p) {
+      if (p.name !== name)           changes.push(`Nume: "${p.name}" → "${name}"`);
+      if (p.start !== start)         changes.push(`Start: ${p.start} → ${start}`);
+      if (p.end !== end)             changes.push(`Final: ${p.end} → ${end}`);
+      if (p.status !== modalRow.status) changes.push(`Status: ${p.status} → ${modalRow.status}`);
+      if (p.progress !== finalProgress) changes.push(`Progres: ${p.progress}% → ${finalProgress}%`);
+      if ((p.assignee||'') !== assignee) {
+        const prev = TEAM.find(m=>m.id===p.assignee)?.name||'Neasignat';
+        const next = TEAM.find(m=>m.id===assignee)?.name||'Neasignat';
+        changes.push(`Responsabil: ${prev} → ${next}`);
+      }
+      Object.assign(p, { name, start, end, progress: finalProgress, status: modalRow.status, color, ttLink: ttLinkVal, allocatedHours: allocHours, assignee });
+    }
+    addLog('edit_project', name, changes.length ? changes.join(' · ') : 'Salvat fără modificări');
   } else {
     const p = projects.find(x => x.id === modalRow.projectId);
-    if (p) { const t = p.tasks.find(x => x.id === modalRow.id); if (t) Object.assign(t, { name, start, end, progress, status: modalRow.status, color }); }
+    if (p) {
+      const t = p.tasks.find(x => x.id === modalRow.id);
+      if (t) {
+        const changes = [];
+        if (t.name !== name)              changes.push(`Nume: "${t.name}" → "${name}"`);
+        if (t.start !== start)            changes.push(`Start: ${t.start} → ${start}`);
+        if (t.end !== end)                changes.push(`Final: ${t.end} → ${end}`);
+        if (t.status !== modalRow.status) changes.push(`Status: ${t.status} → ${modalRow.status}`);
+        if (t.progress !== progress)      changes.push(`Progres: ${t.progress}% → ${progress}%`);
+        Object.assign(t, { name, start, end, progress, status: modalRow.status, color });
+        addLog('edit_task', p.name, `Task "${name}"${changes.length ? ': '+changes.join(' · ') : ''}`);
+      }
+    }
   }
   hideModal(); render(); queueSave();
 }
 function deleteItem() {
   if (!modalRow) return;
-  if (modalRow.isProject) projects = projects.filter(p => p.id !== modalRow.id);
-  else { const p = projects.find(x => x.id === modalRow.projectId); if (p) p.tasks = p.tasks.filter(t => t.id !== modalRow.id); }
+  if (modalRow.isProject) {
+    addLog('delete_project', modalRow.name, `Proiect cu ${modalRow.tasks?.length||0} task-uri șters`);
+    projects = projects.filter(p => p.id !== modalRow.id);
+  } else {
+    const p = projects.find(x => x.id === modalRow.projectId);
+    if (p) {
+      addLog('delete_task', p.name, `Task "${modalRow.name}" șters`);
+      p.tasks = p.tasks.filter(t => t.id !== modalRow.id);
+    }
+  }
   hideModal(); render(); queueSave();
 }
 function hideModal() { document.getElementById('modal-overlay').classList.remove('open'); modalRow = null; }
